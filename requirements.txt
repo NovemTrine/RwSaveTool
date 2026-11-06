@@ -1,0 +1,8 @@
+# 运行依赖（桌面版）
+# 安装： .venv/Scripts/python.exe -m pip install -r requirements.txt
+# 注意：本机 pip 默认镜像返回空，需显式指定 --index-url https://pypi.org/simple
+
+pywebview>=6.0,<7
+
+# 仅打包时需要，运行不需要
+# pyinstaller>=6.0

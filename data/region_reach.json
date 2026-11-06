@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "note": "角色可达区域表。只写「不是所有角色都能进」的区域；没列出的区域一律按可达处理。only = 只有这些角色能进；unlock = 需要先通关才开放的角色（这里按可达处理，保守）；prefix = 该键是区域代码前缀。角色名用存档里的规范 id：survivor / monk / hunter / nightcat / spearmaster / artificer / saint / rivulet / gourmand / inv / watcher / enot。",
+  "regions": {
+    "LM": { "only": ["artificer", "spearmaster"] },
+    "LC": { "only": ["artificer"] },
+    "RM": { "only": ["rivulet"] },
+    "DM": { "note": "月之凝视：只对矛大师有独立剧情，其他角色这段属于海岸线 SL" },
+    "CL": { "only": ["saint"] },
+    "UG": { "only": ["saint"] },
+    "HR": { "only": ["saint"] },
+    "OE": { "only": ["gourmand"], "unlock": ["survivor", "monk"] },
+    "MS": { "note": "沉没巨构：除工匠 / 矛大师外都能进，但剧情标记只对溪流有效" },
+    "W":  { "prefix": true, "only": ["watcher"], "note": "W 开头的区域属于 The Watcher" }
+  }
+}

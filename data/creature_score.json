@@ -1,0 +1,577 @@
+{
+  "mode": "story",
+  "updated": "2026-10-31",
+  "source": "rainworld.miraheze.org/wiki/Score（剧情模式列）",
+  "scores": {
+    "BlueLizard": {
+      "zh": "蓝蜥蜴",
+      "en": "Blue Lizard",
+      "score": 6,
+      "confidence": "wiki"
+    },
+    "WhiteLizard": {
+      "zh": "白蜥蜴",
+      "en": "White Lizard",
+      "score": 8,
+      "confidence": "wiki"
+    },
+    "YellowLizard": {
+      "zh": "金蜥蜴",
+      "en": "Yellow Lizard",
+      "score": 6,
+      "confidence": "wiki"
+    },
+    "PinkLizard": {
+      "zh": "粉蜥蜴",
+      "en": "Pink Lizard",
+      "score": 7,
+      "confidence": "wiki"
+    },
+    "GreenLizard": {
+      "zh": "绿蜥蜴",
+      "en": "Green Lizard",
+      "score": 10,
+      "confidence": "wiki"
+    },
+    "BlackLizard": {
+      "zh": "黑蜥蜴",
+      "en": "Black Lizard",
+      "score": 7,
+      "confidence": "wiki"
+    },
+    "Salamander": {
+      "zh": "蝾螈",
+      "en": "Salamander",
+      "score": 7,
+      "confidence": "wiki"
+    },
+    "RedLizard": {
+      "zh": "烈焰蜥蜴",
+      "en": "Red Lizard",
+      "score": 25,
+      "confidence": "wiki"
+    },
+    "CyanLizard": {
+      "zh": "青蜥蜴",
+      "en": "Cyan Lizard",
+      "score": 9,
+      "confidence": "wiki"
+    },
+    "CaramelLizard": {
+      "zh": "焦糖蜥蜴",
+      "en": "Caramel Lizard",
+      "score": 11,
+      "confidence": "wiki"
+    },
+    "EelLizard": {
+      "zh": "鳗蜥蜴",
+      "en": "Eel Lizard",
+      "score": 6,
+      "confidence": "wiki"
+    },
+    "StrawberryLizard": {
+      "zh": "草莓蜥蜴",
+      "en": "Strawberry Lizard",
+      "score": 6,
+      "confidence": "wiki"
+    },
+    "TrainLizard": {
+      "zh": "火车蜥蜴",
+      "en": "Train Lizard",
+      "score": 25,
+      "confidence": "wiki"
+    },
+    "BasiliskLizard": {
+      "zh": "蛇怪蜥蜴",
+      "en": "Basilisk Lizard",
+      "score": 9,
+      "confidence": "wiki"
+    },
+    "IndigoLizard": {
+      "zh": "靛蓝蜥蜴",
+      "en": "Indigo Lizard",
+      "score": 7,
+      "confidence": "wiki"
+    },
+    "PeachLizard": {
+      "zh": "桃蜥蜴",
+      "en": "Peach Lizard",
+      "score": 5,
+      "confidence": "community"
+    },
+    "SilverLizard": {
+      "zh": "银蜥蜴",
+      "en": "Silver Lizard",
+      "score": 6,
+      "confidence": "community"
+    },
+    "MoleSalamander": {
+      "zh": "鼹螈",
+      "en": "Mole Salamander",
+      "score": 7,
+      "confidence": "community"
+    },
+    "Gecko": {
+      "zh": "壁虎",
+      "en": "Gecko",
+      "score": 5,
+      "confidence": "community"
+    },
+    "SpitLizard": {
+      "zh": "喷吐蜥蜴",
+      "en": "Spit Lizard",
+      "score": 0,
+      "confidence": "unknown"
+    },
+    "ZoopLizard": {
+      "zh": "动物园蜥蜴",
+      "en": "Zoop Lizard",
+      "score": 0,
+      "confidence": "unknown"
+    },
+    "FrostLizard": {
+      "zh": "霜蜥蜴",
+      "en": "Frost Lizard",
+      "score": 0,
+      "confidence": "unknown"
+    },
+    "IceLizard": {
+      "zh": "冰蜥蜴",
+      "en": "Ice Lizard",
+      "score": 0,
+      "confidence": "unknown"
+    },
+    "GlaceLizard": {
+      "zh": "冰晶蜥蜴",
+      "en": "Glace Lizard",
+      "score": 0,
+      "confidence": "unknown"
+    },
+    "WEBlizzardLizard": {
+      "zh": "暴雪蜥蜴（模组）",
+      "en": "Blizzard Lizard (mod)",
+      "score": 0,
+      "confidence": "unknown"
+    },
+    "SmallCentipede": {
+      "zh": "幼年蜈蚣",
+      "en": "Centipede (Youth)",
+      "score": 7,
+      "confidence": "wiki"
+    },
+    "Centipede": {
+      "zh": "蜈蚣",
+      "en": "Centipede (Adult)",
+      "score": 4,
+      "confidence": "wiki"
+    },
+    "Centiwing": {
+      "zh": "飞蜈蚣",
+      "en": "Centiwing",
+      "score": 5,
+      "confidence": "wiki"
+    },
+    "RedCentipede": {
+      "zh": "烈焰蜈蚣",
+      "en": "Red Centipede",
+      "score": 25,
+      "confidence": "wiki"
+    },
+    "Aquapede": {
+      "zh": "水蜈蚣",
+      "en": "Aquapede",
+      "score": 10,
+      "confidence": "wiki"
+    },
+    "FrostiCenti": {
+      "zh": "霜蜈蚣",
+      "en": "Frost Centipede",
+      "score": 0,
+      "confidence": "unknown"
+    },
+    "Fly": {
+      "zh": "蝠蝇",
+      "en": "Batfly",
+      "score": 0,
+      "confidence": "wiki"
+    },
+    "CicadaA": {
+      "zh": "蝉乌贼",
+      "en": "Cicada",
+      "score": 2,
+      "confidence": "wiki"
+    },
+    "CicadaB": {
+      "zh": "蝉乌贼",
+      "en": "Cicada",
+      "score": 2,
+      "confidence": "wiki"
+    },
+    "PoleMimic": {
+      "zh": "拟态草",
+      "en": "Pole Plant",
+      "score": 2,
+      "confidence": "wiki"
+    },
+    "MonsterKelp": {
+      "zh": "红树",
+      "en": "Monster Kelp",
+      "score": 7,
+      "confidence": "wiki"
+    },
+    "TentaclePlant": {
+      "zh": "红树",
+      "en": "Tentacle Plant",
+      "score": 7,
+      "confidence": "wiki"
+    },
+    "WormGrass": {
+      "zh": "舌草",
+      "en": "Worm Grass",
+      "score": 0,
+      "confidence": "wiki"
+    },
+    "Snail": {
+      "zh": "波动龟",
+      "en": "Snail",
+      "score": 1,
+      "confidence": "wiki"
+    },
+    "EggBug": {
+      "zh": "蛋虫",
+      "en": "Eggbug",
+      "score": 2,
+      "confidence": "wiki"
+    },
+    "LanternMouse": {
+      "zh": "光鼠",
+      "en": "Lantern Mouse",
+      "score": 2,
+      "confidence": "community"
+    },
+    "BigSpider": {
+      "zh": "狼蛛",
+      "en": "Big Spider",
+      "score": 4,
+      "confidence": "wiki"
+    },
+    "SpitterSpider": {
+      "zh": "烈焰狼蛛",
+      "en": "Spitter Spider",
+      "score": 5,
+      "confidence": "wiki"
+    },
+    "Spiders": {
+      "zh": "小蜘蛛",
+      "en": "Coalescipede",
+      "score": 1,
+      "confidence": "community"
+    },
+    "Coalescipede": {
+      "zh": "小蜘蛛",
+      "en": "Coalescipede",
+      "score": 1,
+      "confidence": "community"
+    },
+    "Spider": {
+      "zh": "小蜘蛛",
+      "en": "Coalescipede",
+      "score": 1,
+      "confidence": "community"
+    },
+    "MotherSpider": {
+      "zh": "蛛母",
+      "en": "Mother Spider",
+      "score": 4,
+      "confidence": "wiki"
+    },
+    "DropBug": {
+      "zh": "落网虫",
+      "en": "Dropwig",
+      "score": 5,
+      "confidence": "wiki"
+    },
+    "BigNeedleWorm": {
+      "zh": "成年面条蝇",
+      "en": "Adult Noodlefly",
+      "score": 5,
+      "confidence": "wiki"
+    },
+    "SmallNeedleWorm": {
+      "zh": "幼年面条蝇",
+      "en": "Infant Noodlefly",
+      "score": 1,
+      "confidence": "community"
+    },
+    "VultureGrub": {
+      "zh": "射线虫",
+      "en": "Vulture Grub",
+      "score": 0,
+      "confidence": "community"
+    },
+    "TubeWorm": {
+      "zh": "管虫",
+      "en": "Tube Worm",
+      "score": 0,
+      "confidence": "wiki"
+    },
+    "Hazer": {
+      "zh": "墨鱼",
+      "en": "Hazer",
+      "score": 0,
+      "confidence": "community"
+    },
+    "Overseer": {
+      "zh": "监视者",
+      "en": "Overseer",
+      "score": 0,
+      "confidence": "wiki"
+    },
+    "Inspector": {
+      "zh": "监察者",
+      "en": "Inspector",
+      "score": 12,
+      "confidence": "wiki"
+    },
+    "JetFish": {
+      "zh": "蛙鱼",
+      "en": "Jetfish",
+      "score": 4,
+      "confidence": "wiki"
+    },
+    "Scavenger": {
+      "zh": "拾荒者",
+      "en": "Scavenger",
+      "score": 6,
+      "confidence": "wiki"
+    },
+    "ScavengerElite": {
+      "zh": "精英拾荒者",
+      "en": "Elite Scavenger",
+      "score": 12,
+      "confidence": "wiki"
+    },
+    "ScavengerTemplar": {
+      "zh": "拾荒者圣堂武士",
+      "en": "Scavenger Templar",
+      "score": 12,
+      "confidence": "wiki"
+    },
+    "ScavengerDisciple": {
+      "zh": "拾荒者门徒",
+      "en": "Scavenger Disciple",
+      "score": 12,
+      "confidence": "wiki"
+    },
+    "ScavengerTrader": {
+      "zh": "拾荒者商人",
+      "en": "Scavenger Trader",
+      "score": 0,
+      "confidence": "unknown"
+    },
+    "ScavengerKing": {
+      "zh": "拾荒者酋长",
+      "en": "Scavenger Chieftain",
+      "score": 25,
+      "confidence": "wiki"
+    },
+    "GarbageWorm": {
+      "zh": "垃圾虫",
+      "en": "Garbage Worm",
+      "score": 0,
+      "confidence": "wiki"
+    },
+    "Deer": {
+      "zh": "雨鹿",
+      "en": "Rain Deer",
+      "score": 12,
+      "confidence": "wiki"
+    },
+    "Yeek": {
+      "zh": "跃客",
+      "en": "Yeek",
+      "score": 2,
+      "confidence": "wiki"
+    },
+    "JungleLeech": {
+      "zh": "丛林水蛭",
+      "en": "Jungle Leech",
+      "score": 1,
+      "confidence": "community"
+    },
+    "Leech": {
+      "zh": "水蛭",
+      "en": "Leech",
+      "score": 1,
+      "confidence": "community"
+    },
+    "SeaLeech": {
+      "zh": "海水蛭",
+      "en": "Sea Leech",
+      "score": 1,
+      "confidence": "community"
+    },
+    "Vulture": {
+      "zh": "秃鹫",
+      "en": "Vulture",
+      "score": 15,
+      "confidence": "wiki"
+    },
+    "KingVulture": {
+      "zh": "魔王鹫",
+      "en": "King Vulture",
+      "score": 25,
+      "confidence": "wiki"
+    },
+    "MirosBird": {
+      "zh": "钢鸟",
+      "en": "Miros Bird",
+      "score": 16,
+      "confidence": "wiki"
+    },
+    "MirosVulture": {
+      "zh": "钢秃鹫",
+      "en": "Miros Vulture",
+      "score": 25,
+      "confidence": "wiki"
+    },
+    "Leviathan": {
+      "zh": "利维坦",
+      "en": "Leviathan",
+      "score": 25,
+      "confidence": "wiki"
+    },
+    "BigJelly": {
+      "zh": "巨型水母",
+      "en": "Giant Jellyfish",
+      "score": 20,
+      "confidence": "community"
+    },
+    "BigEel": {
+      "zh": "大鳗",
+      "en": "Big Eel",
+      "score": 0,
+      "confidence": "unknown"
+    },
+    "BigMoth": {
+      "zh": "大蛾",
+      "en": "Big Moth",
+      "score": 8,
+      "confidence": "wiki"
+    },
+    "SmallMoth": {
+      "zh": "小蛾",
+      "en": "Small Moth",
+      "score": 2,
+      "confidence": "wiki"
+    },
+    "MothGrub": {
+      "zh": "蛾螬",
+      "en": "Moth Grub",
+      "score": 1,
+      "confidence": "wiki"
+    },
+    "FireBug": {
+      "zh": "火虫",
+      "en": "Firebug",
+      "score": 5,
+      "confidence": "wiki"
+    },
+    "FireSprite": {
+      "zh": "火精灵",
+      "en": "Fire Sprite",
+      "score": 4,
+      "confidence": "community"
+    },
+    "Rattler": {
+      "zh": "震骨者",
+      "en": "Rattler",
+      "score": 4,
+      "confidence": "community"
+    },
+    "Barnacle": {
+      "zh": "藤壶",
+      "en": "Barnacle",
+      "score": 4,
+      "confidence": "community"
+    },
+    "Stowaway": {
+      "zh": "偷渡者",
+      "en": "Stowaway Bug",
+      "score": 8,
+      "confidence": "wiki"
+    },
+    "StowawayBug": {
+      "zh": "偷渡者",
+      "en": "Stowaway Bug",
+      "score": 8,
+      "confidence": "wiki"
+    },
+    "SlugNPC": {
+      "zh": "蛞蝓猫幼崽",
+      "en": "Slugpup",
+      "score": 2,
+      "confidence": "community"
+    },
+    "Slugcat": {
+      "zh": "蛞蝓猫",
+      "en": "Slugcat",
+      "score": 2,
+      "confidence": "community"
+    },
+    "Polliwog": {
+      "zh": "蝌蚪",
+      "en": "Polliwog",
+      "score": 4,
+      "confidence": "community"
+    },
+    "SurfaceSwimmer": {
+      "zh": "水面游虫",
+      "en": "Surface Swimmer",
+      "score": 2,
+      "confidence": "community"
+    },
+    "ExplodingMosquito": {
+      "zh": "爆裂蚊",
+      "en": "Exploding Mosquito",
+      "score": 4,
+      "confidence": "community"
+    },
+    "TintedBeetle": {
+      "zh": "钻蟹",
+      "en": "Tinted Beetle",
+      "score": 16,
+      "confidence": "community"
+    },
+    "Frog": {
+      "zh": "青蛙",
+      "en": "Frog",
+      "score": 1,
+      "confidence": "community"
+    },
+    "Rat": {
+      "zh": "老鼠",
+      "en": "Rat",
+      "score": 1,
+      "confidence": "community"
+    },
+    "DaddyLongLegs": {
+      "zh": "蓝长腿菌",
+      "en": "Daddy Long Legs",
+      "score": 25,
+      "confidence": "wiki"
+    },
+    "BrotherLongLegs": {
+      "zh": "黄长腿菌",
+      "en": "Brother Long Legs",
+      "score": 14,
+      "confidence": "wiki"
+    },
+    "BabyCroaker": {
+      "zh": "幼蛙",
+      "en": "Baby Croaker",
+      "score": 1,
+      "confidence": "community"
+    }
+  }
+}

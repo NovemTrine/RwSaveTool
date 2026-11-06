@@ -1,0 +1,59 @@
+# ============================================================
+# RwSaveTool · 雨世界存档分析器
+# 仓库根 = RwSaveTool/。只放源码、内置数据表、文档与截图。
+# 运行环境、构建产物、发布包、用户数据、个人配置一律不进版本控制。
+# ============================================================
+
+# ---------- Python 环境 ----------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# ---------- 构建产物 ----------
+dist/
+dist_onefile/
+build/_work/
+build/_stage/
+build/_shots/
+build/_test/
+_test/
+*.spec
+
+# ---------- 发布包与源码备份（走 GitHub Releases，不进仓库）----------
+release/
+code_backups/
+
+# ---------- 用户数据与个人配置（含本机路径、存档、模组缓存）----------
+config.json
+region_data/
+region_data.bak*/
+sav
+userdata_backup_*/
+
+# ---------- 回归与临时产物 ----------
+*_last.json
+*_snapshot.json
+docs/*.bmp
+docs/*.json
+*.bak
+*.bak-*
+*.log
+
+# ---------- 工具与系统 ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- docs/ 只留 README 用到的那 3 张 ----------
+# 其余是开发期的实验页（roomtext_*.html / mapstyle_preview.html）与过程截图，
+# 不进仓库；本地保留，需要时可删。
+docs/*
+!docs/overview.png
+!docs/map_entry.png
+!docs/graph_all.png

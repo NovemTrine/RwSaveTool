@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "source": "Rain World Wiki（Regions / Passages / 各区域条目）",
+  "note": "只作提示，不做强制过滤。界面默认只显示该角色有过活动的区域，其余区域由「区域选择」手动加入。",
+  "regions": {
+    "LM": {
+      "zh": "水滨设施",
+      "note": "Waterfront Facility：通常只有 工匠 / 矛大师 能进入；其他角色这里是海岸线 SL"
+    },
+    "LC": {
+      "zh": "大都会",
+      "note": "Metropolis：通常只有 工匠 能进入"
+    },
+    "RM": {
+      "zh": "腐化之地",
+      "note": "The Rot：通常只有 溪流 能进入；其他角色这里是五卵石 SS"
+    },
+    "CL": {
+      "zh": "寂静构造",
+      "note": "Silent Construct：通常只有 圣徒 能进入（由 阴影城堡 / 五卵石 / 外缘 合并而成）"
+    },
+    "UG": {
+      "zh": "腐化林",
+      "note": "Undergrowth：通常只有 圣徒 能进入；其他角色这里是排水系统 DS"
+    },
+    "HR": {
+      "zh": "卢比孔河",
+      "note": "Rubicon：剧情终点区域，通常只有 圣徒 能进入"
+    },
+    "OE": {
+      "zh": "外层空间",
+      "note": "Outer Expanse：先由 饕餮 进入，通关后 白猫 / 黄猫 才开放，其余角色进不去"
+    },
+    "MS": {
+      "zh": "沉没巨构",
+      "note": "Submerged Superstructure：除 工匠 / 矛大师 外都能进，但剧情标记只对 溪流 有效"
+    },
+    "VS": {
+      "zh": "管道场",
+      "note": "Pipeyard：所有角色都能进入"
+    },
+    "DM": {
+      "zh": "月之凝视",
+      "note": "Looks to the Moon：只对 矛大师 有独立剧情；其他角色这一段属于海岸线"
+    },
+    "W": {
+      "zh": "守护者区域",
+      "note": "所有 W 开头的区域（WAUA / WRFA / WSSR …）属于 The Watcher，只有 守护者 能进入"
+    }
+  }
+}

@@ -1,0 +1,606 @@
+{
+  "note": "雨世界地图缩写对照表（从 5 张截图逐行转录，按缩写去重）",
+  "count": 100,
+  "entries": [
+    {
+      "abbr": "PV",
+      "zh": "保护区",
+      "en": "Preservatory",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "GH",
+      "zh": "悬苑",
+      "en": "Hanging Gardens",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "LW",
+      "zh": "葱郁沼泽",
+      "en": "Lush Mire",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "SE",
+      "zh": "蒸汽大厦",
+      "en": "Steaming Edifice",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "RF",
+      "zh": "珊瑚洞穴",
+      "en": "Coral Caves",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "FO",
+      "zh": "雾谷",
+      "en": "Fog Gulch",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "LH",
+      "zh": "月球大道",
+      "en": "Lunar Byway",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "TL",
+      "zh": "地铁",
+      "en": "Subway",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "SK",
+      "zh": "风暴海岸",
+      "en": "Stormy Coast",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "SEC",
+      "zh": "隐蔽幽径",
+      "en": "Secluded Pass",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "FS",
+      "zh": "远岸",
+      "en": "Far Shore",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "PA",
+      "zh": "朝圣天路",
+      "en": "Pilgrims' Ascent",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "SD",
+      "zh": "焦土区",
+      "en": "Scorched District",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "TM",
+      "zh": "诡杆",
+      "en": "The Mast",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "BL",
+      "zh": "恶地",
+      "en": "Badlands",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "US",
+      "zh": "海底",
+      "en": "Undersea",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "GS",
+      "zh": "镀金圣殿",
+      "en": "Gilded Sanctuary",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "AB",
+      "zh": "干旱荒原",
+      "en": "Arid Barrens",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "NP",
+      "zh": "墓地",
+      "en": "Necropolis",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "HH",
+      "zh": "神圣洞穴",
+      "en": "Hallowed Grotto",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "UF",
+      "zh": "灼热下水道",
+      "en": "Sizzling Sewers",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "O7",
+      "zh": "荒芜都市",
+      "en": "Overgrown Urban",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "TX",
+      "zh": "地下通道",
+      "en": "Underpass",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "DC",
+      "zh": "排水渠",
+      "en": "Drainage Canal",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "FT",
+      "zh": "遗弃车站",
+      "en": "Forsaken Station",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "ER",
+      "zh": "蚀化炼油厂",
+      "en": "Eroded Refinery",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "HC",
+      "zh": "嚎叫裂隙",
+      "en": "Howling Rift",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "UB",
+      "zh": "腹底暗域",
+      "en": "Underbelly",
+      "source": "Snipaste_2026-10-31_13-06-26.png"
+    },
+    {
+      "abbr": "JJ",
+      "zh": "凌霄望台",
+      "en": "Soaring Lookout",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "SP",
+      "zh": "阳光发电厂",
+      "en": "Sunlit Power Plant",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "M1",
+      "zh": "畸变蔓延",
+      "en": "Metastasis",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "MF",
+      "zh": "苔藓田野",
+      "en": "Moss Fields",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "EU",
+      "zh": "夜光海湾",
+      "en": "Luminous Cove",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "GU",
+      "zh": "荒芜都市",
+      "en": "Gray Urban",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "CW",
+      "zh": "追逐清风",
+      "en": "Chasing Wind",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "SC",
+      "zh": "圣园",
+      "en": "Sacred Garden",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "ZZ",
+      "zh": "天线阵列",
+      "en": "Aerial Arrays",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "RTAA",
+      "zh": "附属区域",
+      "en": "The Annex",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "OA",
+      "zh": "渡槽",
+      "en": "Aqueducts",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "KF",
+      "zh": "古风设施",
+      "en": "Archaic Facility",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "QL",
+      "zh": "灰烬弓湾",
+      "en": "Ashen Bow",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "IP",
+      "zh": "辅助取水口",
+      "en": "Auxiliary Intake",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "55",
+      "zh": "荒凉街道",
+      "en": "Barren Streets",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "BI",
+      "zh": "生物工程中心",
+      "en": "Bioengineering Center",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "BPL",
+      "zh": "黑色管道 7",
+      "en": "Black Pipeline VII",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "UU",
+      "zh": "城堡",
+      "en": "Citadel",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "WCSA",
+      "zh": "城市天际线",
+      "en": "City Skyline",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "RGN",
+      "zh": "雨中花园",
+      "en": "Rain Garden",
+      "source": "Snipaste_2026-10-31_13-06-32.png"
+    },
+    {
+      "abbr": "WRFA",
+      "zh": "珊瑚洞穴",
+      "en": "Coral Caves",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WARF",
+      "zh": "以太山脊",
+      "en": "Aether Ridge",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WSKA",
+      "zh": "暴雨铁路",
+      "en": "Torrential Railways",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WPGA",
+      "zh": "柱林",
+      "en": "Pillar Grove",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WSKD",
+      "zh": "隐蔽堆层",
+      "en": "Shrouded Stacks",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WARG",
+      "zh": "表面",
+      "en": "The Surface",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WTDA",
+      "zh": "炎热沙漠",
+      "en": "Torrid Desert",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WARE",
+      "zh": "供热管道",
+      "en": "Heat Ducts",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WARB",
+      "zh": "盐化区",
+      "en": "Salination",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WARC",
+      "zh": "腐臭幽谷",
+      "en": "Fetid Glen",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WVWA",
+      "zh": "翠绿水道",
+      "en": "Verdant Waterways",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WRFB",
+      "zh": "涡流泵",
+      "en": "Turbulent Pump",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WTDB",
+      "zh": "凄凉地带",
+      "en": "Desolate Tract",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WRRA",
+      "zh": "锈蚀残骸",
+      "en": "Rusted Wrecks",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WSKB",
+      "zh": "曝日巷",
+      "en": "Sunbaked Alley",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WPTA",
+      "zh": "信号尖塔",
+      "en": "Signal Spires",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WSKC",
+      "zh": "风暴海岸",
+      "en": "Stormy Coast",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WARD",
+      "zh": "冷库",
+      "en": "Cold Storage",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WMPA",
+      "zh": "迁徙之路",
+      "en": "Migration Path",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WBLA",
+      "zh": "不毛之地",
+      "en": "Badlands",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WVWB",
+      "zh": "断裂通道",
+      "en": "Fractured Gateways",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WSSR",
+      "zh": "不幸演化",
+      "en": "Unfortunate Evolution",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WORA",
+      "zh": "外缘（观望者）",
+      "en": "Outer Rim",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WSUR",
+      "zh": "欲坠边缘",
+      "en": "Crumbling Fringes",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WHTR",
+      "zh": "腐化工厂",
+      "en": "Corrupted Factories",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WDSR",
+      "zh": "衰败隧道",
+      "en": "Decaying Tunnels",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WGWR",
+      "zh": "受浸染的废土",
+      "en": "Infested Wastes",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WRSA",
+      "zh": "间域",
+      "en": "daemon",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WARA",
+      "zh": "破碎露台",
+      "en": "Shattered Terrace",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "WAUA",
+      "zh": "上古城市",
+      "en": "Ancient Urban",
+      "source": "Snipaste_2026-10-31_13-06-36.png"
+    },
+    {
+      "abbr": "LM",
+      "zh": "海滨设施",
+      "en": "Waterfront Facility",
+      "source": "Snipaste_2026-10-31_13-06-40.png"
+    },
+    {
+      "abbr": "DM",
+      "zh": "仰望皓月",
+      "en": "Looks to the Moon",
+      "source": "Snipaste_2026-10-31_13-06-40.png"
+    },
+    {
+      "abbr": "RM",
+      "zh": "腐化之地",
+      "en": "The Rot",
+      "source": "Snipaste_2026-10-31_13-06-40.png"
+    },
+    {
+      "abbr": "LC",
+      "zh": "大都会",
+      "en": "Metropolis",
+      "source": "Snipaste_2026-10-31_13-06-40.png"
+    },
+    {
+      "abbr": "UG",
+      "zh": "地下森林",
+      "en": "Underground",
+      "source": "Snipaste_2026-10-31_13-06-40.png"
+    },
+    {
+      "abbr": "HR",
+      "zh": "魔方节点",
+      "en": "Rubicon",
+      "source": "Snipaste_2026-10-31_13-06-40.png"
+    },
+    {
+      "abbr": "OE",
+      "zh": "外层空间",
+      "en": "Outer Expanse",
+      "source": "Snipaste_2026-10-31_13-06-40.png"
+    },
+    {
+      "abbr": "CL",
+      "zh": "无声构造",
+      "en": "Silent Construct",
+      "source": "Snipaste_2026-10-31_13-06-40.png"
+    },
+    {
+      "abbr": "SU",
+      "zh": "郊区",
+      "en": "Outskirts",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "HI",
+      "zh": "工业区",
+      "en": "Industrial Complex",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "GW",
+      "zh": "垃圾堆",
+      "en": "Garbage Wastes",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "DS",
+      "zh": "排水系统",
+      "en": "Drainage System",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "SB",
+      "zh": "地底",
+      "en": "Subterranean",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "LF",
+      "zh": "农场阵列",
+      "en": "Farm Arrays",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "SI",
+      "zh": "天空群岛",
+      "en": "Sky Islands",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "VS",
+      "zh": "管道堆场",
+      "en": "Pipeyard",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "SH",
+      "zh": "阴影城堡",
+      "en": "Shaded Citadel",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "UW",
+      "zh": "外缘",
+      "en": "The Exterior",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "SS",
+      "zh": "五块卵石",
+      "en": "Five Pebbles",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "MS",
+      "zh": "沉没巨构",
+      "en": "Submerged Superstructure",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "CC",
+      "zh": "烟囱天棚",
+      "en": "Chimney Canopy",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    },
+    {
+      "abbr": "SL",
+      "zh": "海岸线",
+      "en": "Shoreline",
+      "source": "Snipaste_2026-10-31_13-06-43.png"
+    }
+  ]
+}
