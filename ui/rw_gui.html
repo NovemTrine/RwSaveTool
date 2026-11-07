@@ -472,7 +472,10 @@
     padding:12px 16px 14px;flex:1 1 auto;min-height:0}
   .modal-card.full .gx-stage{flex:1 1 auto;height:auto;min-height:0}
   .modal-card.full .map-stage{flex:1 1 auto;height:auto;min-height:0}
-  .modal-card.full .modal-head{padding:12px 16px}
+  /* 全屏时收紧头部内边距。但房间卡（.room-head）右侧要留 58px 给绝对定位的关闭键——
+     这条规则的特异性 (0,3,0) 会盖掉 .room-head 的 padding-right:58px (0,1,0)，
+     结果全屏后 × 正好落在按钮组尾部按钮的矩形里，被压得看不见。所以排除它。 */
+  .modal-card.full .modal-head:not(.room-head){padding:12px 16px}
   .modal-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line)}
   .modal-head h3{margin:0;font-size:15px;font-weight:600;letter-spacing:.02em}
   .modal-head .sub{font-size:11.5px;color:var(--dim)}
@@ -566,6 +569,43 @@
     --rm-beam:#b4761a;--rm-climb:#e2e2e2;--rm-pipe:#6a6a6a;
     --rm-exit:#12a012;--rm-den:#b01818;--rm-creature:#2020c0}
   .room-card{width:min(1040px,96vw)}
+  /* 全屏（B5）：尺寸复用关系图那套，但房间卡自己的 body 改成横向两栏——
+     左边画布吃满剩余高度，右边固定 258px 放出口清单。紧凑模式（默认）
+     右栏整块隐藏，观感与改动前完全一致。 */
+  .room-card.full{width:min(1780px,98vw);height:96vh;max-height:96vh}
+  .rm-body{display:flex;flex-direction:column;min-height:0}
+  .room-card.full .rm-body{flex-direction:row;align-items:stretch;gap:12px;
+    overflow:hidden;flex:1 1 auto}
+  .rm-main{display:flex;flex-direction:column;min-width:0;min-height:0;flex:1 1 auto}
+  .room-card.full .rm-stage{height:auto;flex:1 1 auto;min-height:0}
+  .rm-side{display:none}
+  .room-card.full .rm-side{display:flex;flex:0 0 258px;flex-direction:column;gap:10px;
+    min-height:0;overflow-y:auto;padding-right:2px}
+  .rm-side-h{font-size:11.5px;color:var(--muted);letter-spacing:.02em;display:flex;
+    align-items:center;gap:6px;margin-bottom:7px}
+  .rm-side-n{color:var(--dim);font-variant-numeric:tabular-nums}
+  .rm-exits{display:flex;flex-direction:column;gap:5px}
+  .rm-exit-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;
+    border:1px solid var(--line);background:var(--surface-2);font-size:11.5px;min-width:0}
+  .rm-exit-n{flex:0 0 18px;height:18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:10.5px;font-weight:600;
+    background:var(--rm-exit);color:#07120a;font-variant-numeric:tabular-nums}
+  .rm-exit-to{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;color:var(--text)}
+  .rm-exit-dir{flex:0 0 auto;font-size:10.5px;color:var(--dim)}
+  .rm-exit-row.is-none .rm-exit-to{color:var(--dim);font-style:italic}
+  .rm-exit-row.is-none .rm-exit-n{background:var(--line2);color:var(--muted)}
+  .rm-exit-row.is-link{cursor:pointer}
+  .rm-exit-row.is-link:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--line));
+    background:color-mix(in srgb,var(--accent) 9%,var(--surface-2))}
+  .rm-exit-row.is-link:active{background:color-mix(in srgb,var(--accent) 16%,var(--surface-2))}
+  .rm-exit-row.is-none{cursor:not-allowed}
+  .rm-exit-row.is-mark{outline:1px solid var(--accent);outline-offset:0}
+  /* P4：本层画布缺对应出口格的行 —— 只压暗编号，行本身保留（编号语义依然成立） */
+  .rm-exit-row.is-nocell .rm-exit-n{opacity:.5}
+  .rm-side-note{font-size:11px;color:var(--dim);line-height:1.6;margin-top:8px}
+  .rm-side-empty{font-size:11.5px;color:var(--dim);padding:10px;border:1px dashed var(--line2);
+    border-radius:8px;line-height:1.6}
   .rp-modal{z-index:80}
   .rp-card{width:min(560px,94vw)}
   .rp-tabs{display:flex;gap:8px;margin-bottom:14px}
@@ -765,7 +805,8 @@
   .comp-bar span{display:block;height:100%;background:linear-gradient(90deg,var(--teal),#8ce7db)}
   .comp.dim .comp-top .pct{color:var(--dim)}
   .comp.dim .comp-bar span{background:var(--line2)}
-  .numsub{font-size:10.5px;color:var(--dim);margin-left:3px}
+  .numsub{font-size:10.5px;color:var(--dim);margin-left:3px;
+    max-width:220px;overflow-wrap:anywhere;word-break:break-word}
 
   /* ---------------- 区域地图（矢量，无底图） ---------------- */
   .map-wrap{display:flex;flex-direction:column;gap:10px;flex:1 1 auto;min-height:0}
@@ -1112,22 +1153,32 @@
         <button id="rm-exclude" class="btn ghost rm-locate" type="button"
           title="这间房当前角色正常情况下去不了：勾上就把它从完成度分母里剔掉">不可达</button>
         <button id="rm-graph" class="btn ghost rm-locate" type="button" title="在区域拓扑图里定位这间房">拓扑定位</button>
+        <button id="rm-full" class="btn ghost rm-locate" type="button" title="全屏 / 紧凑（F）">全屏</button>
         <button id="rm-palette" class="btn ghost rm-locate" type="button" title="改成自己看得顺眼的颜色">配色</button>
         <button id="rm-locate" class="btn ghost rm-locate" type="button">在地图上定位</button>
       </div>
       <button id="rm-close" class="modal-close" type="button" aria-label="关闭">×</button>
     </div>
-    <div class="modal-body" id="rm-body">
-      <div class="rm-stage" id="rm-stage">
-        <canvas id="rm-canvas"></canvas>
-        <div class="map-zoom" id="rm-zoom">
-          <button type="button" data-rzoom="out" title="缩小">−</button>
-          <span id="rm-zoom-pct">100%</span>
-          <button type="button" data-rzoom="in" title="放大">+</button>
-          <button type="button" data-rzoom="reset" title="复位">复位</button>
+    <div class="modal-body rm-body" id="rm-body">
+      <div class="rm-main">
+        <div class="rm-stage" id="rm-stage">
+          <canvas id="rm-canvas"></canvas>
+          <div class="map-zoom" id="rm-zoom">
+            <button type="button" data-rzoom="out" title="缩小">−</button>
+            <span id="rm-zoom-pct">100%</span>
+            <button type="button" data-rzoom="in" title="放大">+</button>
+            <button type="button" data-rzoom="reset" title="复位">复位</button>
+          </div>
         </div>
+        <div class="rm-legend" id="rm-legend"></div>
       </div>
-      <div class="rm-legend" id="rm-legend"></div>
+      <aside class="rm-side" id="rm-side">
+        <div>
+          <div class="rm-side-h">出口 <span class="rm-side-n" id="rm-exit-n"></span></div>
+          <div class="rm-exits" id="rm-exits"></div>
+          <div class="rm-side-note" id="rm-exit-note"></div>
+        </div>
+      </aside>
     </div>
   </div>
 </div>
@@ -2487,6 +2538,9 @@ function parseSave(raw, onProgress){
   state.roomMarks = {};        /* 手动探索标记：{区域:{房间:1|-1}}，缺省跟随存档 */
   state.roomExcluded = {};     /* 手动"此角色到不了"：{角色:{区域:[房间]}}，直接剔除出分母 */
   state.roomStrict = true;     /* 完成度口径：true=只算当前角色可达的房间 */
+  /* 房间卡是否全屏：默认全屏（P4 起）。右栏清单只在全屏时可见，默认紧凑会让
+     「出口跳转 / 悬停高亮」没有入口；config.ui.roomCardFull 有值时以配置为准。 */
+  state.roomCardFull = true;
   state.muFilter = 'unseen';   /* 地图弹窗里的房间号清单标签：all / unseen / seen */
   state.sources = [];          /* 来源清单（Original / Downpour / Watcher / 各模组） */
   state.sourcePresets = ['Original','Downpour','Watcher','Mod'];
@@ -2621,6 +2675,7 @@ function parseSave(raw, onProgress){
       }
       renderRegionsModal();
     }).catch(function(){});
+    rmNameIndex = null;   /* 区域数据换了一批（首次加载 / 重导 / 删区域），房间名索引重建 */
     state.regionsPromise = p;   /* 世界拓扑要等它加载完，否则只能画出一半区域 */
     return p;
   }
@@ -3765,10 +3820,14 @@ function parseSave(raw, onProgress){
       if (cp.pct != null){
         var sub = [];
         if (cp.variant) sub.push('变体 ' + cp.variant);
-        if (cp.layerNames && cp.layerNames.length > 1) sub.push(cp.layerNames.join(' + '));
+        /* 来源名最多列 3 个：分层导入后一个区域可能有十几个来源，全列出来会把表格撑宽 */
+        if (cp.layerNames && cp.layerNames.length > 1){
+          var ln = cp.layerNames;
+          sub.push(ln.length > 3
+            ? ln.slice(0, 3).join(' + ') + ' 等 ' + ln.length + ' 个来源'
+            : ln.join(' + '));
+        }
         if (cp.conditionalDropped) sub.push('条件房间 −' + cp.conditionalDropped);
-        if (cp.roleDropped) sub.push('角色专属 −' + cp.roleDropped);
-        if (cp.manualDropped) sub.push('手动排除 −' + cp.manualDropped);
         if (cp.roleDropped) sub.push('角色专属 −' + cp.roleDropped);
         if (cp.manualDropped) sub.push('手动排除 −' + cp.manualDropped);
         if (cp.unknown) sub.push('来源未知 ' + cp.unknown);
@@ -4895,6 +4954,9 @@ function parseSave(raw, onProgress){
         '<span class="lr-meta">' + esc(sub.join(' · ')) + '</span>' +
         '<button class="sort-btn lr-btn" type="button" data-rename="' + esc(L.sourceId || L.id) + '" data-current="' + esc(L.sourceName || L.label || '') + '">改名</button>' +
         '<button class="sort-btn lr-btn" type="button" data-dellayer="' + esc(L.id) + '" data-code="' + esc(r.code) + '">移除</button>' +
+        '<button class="sort-btn lr-btn" type="button" data-delsrc="' + esc(L.sourceId || L.id) +
+          '" data-name="' + esc(L.sourceName || L.label || L.id) +
+          '" title="删掉这个来源在所有区域的全部数据（跨区域）">清来源</button>' +
         '</div>';
     }).join('');
 
@@ -5027,6 +5089,37 @@ function parseSave(raw, onProgress){
           toast('已移除该来源层');
           loadRegions().then(renderRegionsModal);
         }).catch(function(e){ toast('移除失败：' + (e && e.message || e)); });
+      });
+    });
+
+    /* 清来源（S3）：模组数据是按区域存的，District4B 实测散在 37 个层里，
+       只删一个区域的那层，地图上到处都还留着 SB_4B 这种残影。
+       这里先算影响面给人看，确认后跨区域一次清干净。 */
+    Array.prototype.forEach.call(modalBody.querySelectorAll('[data-delsrc]'), function(btn){
+      btn.addEventListener('click', function(){
+        var sid = btn.getAttribute('data-delsrc');
+        var nm = btn.getAttribute('data-name') || sid;
+        bridgeCall('preview_source_delete', sid).then(function(res){
+          if (!res || !res.ok){ toast((res && res.error) || '预览失败'); return; }
+          var regs = (res.regions || []).map(function(x){ return x.code; });
+          var msg = '删除来源「' + nm + '」的全部数据？\n\n' +
+            '区域 ' + (res.regions || []).length + ' 个 · 层 ' + res.layerCount +
+            ' 个 · 房间 ' + res.roomCount + ' 间\n' +
+            '区域：' + regs.slice(0, 20).join(' / ') + (regs.length > 20 ? ' …' : '') + '\n';
+          if ((res.emptyRegions || []).length){
+            msg += '\n以下区域会被删空并整份移除：' + res.emptyRegions.join(' / ') + '\n';
+          }
+          msg += '\n其它层里指向这些房间的邻居/连接/出口去向会一并清掉。\n' +
+                 '（会影响存档分析里的房间数与完成度，操作前已自动备份）';
+          if (!window.confirm(msg)) return;
+          bridgeCall('delete_source', sid).then(function(r2){
+            if (!r2 || !r2.ok){ toast((r2 && r2.error) || '删除失败'); return; }
+            toast('已删除 ' + r2.layers + ' 层 / ' + r2.rooms + ' 间房' +
+              (r2.refs ? '，清理引用 ' + r2.refs + ' 处' : ''));
+            rmNameIndex = null;
+            loadRegions().then(renderRegionsModal);
+          }).catch(function(e){ toast('删除失败：' + (e && e.message || e)); });
+        }).catch(function(e){ toast('预览失败：' + (e && e.message || e)); });
       });
     });
 
@@ -5899,6 +5992,11 @@ function parseSave(raw, onProgress){
   var GX_ALPHA_FLOOR = 0.8;
   var GX_SETTLE_TICKS = 900;   /* 收敛预算：warm 与可见那一遍跑同样多步，fit 才对得上 */
   var GX_EASE_TICKS = 45;      /* 前 45 拍一步一步走（"从一点摊开"要看得见），之后一步当三步 */
+  /* 单击 / 拖动的分界：按下后以落点为圆心画一个半径 5px 的隐形圈，
+     鼠标一旦移出圈就锁定为「拖动」——回圈也不改判（latch），
+     否则拖完再松手会被当成单击，一下把人弹进房间卡。
+     参考 Windows 系统拖拽阈值（SM_CXDRAG）默认 4px，这里取 5 略宽一点更好点。 */
+  var GX_DRAG_RADIUS = 5;
   var GX_SETTLE_SPEED = 0.18;  /* 平均速度低于它算"站稳" */
   var GX_DRAG_STEP = 20;       /* 拖动时允许更大的单步位移，邻居跟得快 */
   var GX_NODE_PX = 1.0;       /* Obsidian 的世界半径 → 我们的屏幕像素 */
@@ -5919,7 +6017,7 @@ function parseSave(raw, onProgress){
     orphan: 1,                 /* 孤立房间（0 度）默认显示 */
     view: 'all',               /* all | visited | unvisited */
     reachMode: 'reach',        /* 世界拓扑：reach=只显示可达 / ghost=可达+灰显 / all=全部 */
-    idle: 0,                   /* 1 = 保持微动（不冻结物理） */
+    idle: 1,                   /* 1 = 保持微动（不冻结物理） */
     labelGap: 26,              /* 名字最小间距（屏幕 px）；0 = 从不隐藏 */
     labelFade: 0,              /* 0 = 整批浮现（默认）；1 = 每个名字各自淡出（旧行为） */
     labelCrowd: 0,             /* 可选项 A：0 = 名字只跟缩放整批显隐（默认）；1 = 按间距/密度逐个让位 */
@@ -6279,7 +6377,6 @@ function parseSave(raw, onProgress){
         '<button class="btn ghost" id="gx-back" type="button" title="回到这个区域的地图">← 地图</button>' +
         '<span class="gx-playgrp">' +
           '<button class="btn primary" id="gx-play" type="button">▶ 播放</button>' +
-          '<button class="btn ghost" id="gx-restart" type="button">回到起点</button>' +
           '<label class="gx-lab">起点<select id="gx-start">' + starts + '</select></label>' +
           '<label class="gx-lab">顺序<select id="gx-order">' + orders + '</select></label>' +
           '<label class="gx-lab">间隔<input type="range" id="gx-gap" min="30" max="600" step="10" value="' + o.gap + '"><b id="gx-gap-v">' + o.gap + 'ms</b></label>' +
@@ -7190,7 +7287,11 @@ function parseSave(raw, onProgress){
       var w = gxToWorld(ev);
       var d = GX.drag;
       if (d){
-        if (!d.moved && (Math.abs(w.sx - d.downX) + Math.abs(w.sy - d.downY) > 5)) d.moved = true;
+        if (!d.moved){
+          /* 圆圈判定：欧氏距离一旦超过半径就永久锁定为拖动（不只是"当前超标"） */
+          var ddx = w.sx - d.downX, ddy = w.sy - d.downY;
+          if (ddx * ddx + ddy * ddy > GX_DRAG_RADIUS * GX_DRAG_RADIUS) d.moved = true;
+        }
         if (d.hit >= 0){
           var nn = GX.nodes[d.hit];
           nn.fx = nn.x = w.x; nn.fy = nn.y = w.y;
@@ -7224,28 +7325,20 @@ function parseSave(raw, onProgress){
       var t = $('gx-tip'); if (t) t.classList.remove('on');
       gxChanged();
     });
-    /* 单击只选中（拖完手一松不会再被弹进房间卡），双击才打开 */
+    /* 单击进入房间卡 / 区域；拖动只负责挪节点，不许顺手把人弹进去。
+       GX.drag 在这之后（gxMouseUp）就被清空了，click 事件派发时拿不到它，
+       所以判定结果必须提前写进 GX.suppressClick。 */
     cv.addEventListener('click', function(ev){
-      var d = GX.drag;
-      if (d && d.moved) return;
+      if (GX.suppressClick){ GX.suppressClick = false; return; }
       var hit = gxPick(ev);
-      if (hit >= 0){
-        GX.sel = hit;
-        if (GX.opts.start === 'custom'){
-          GX.startIdx = hit;      /* 「起点 = 选中节点」时，点谁就从谁开始 */
-          gxBuildPlaySeq();
-        }
-        gxTip(hit, ev);
-        gxChanged();
-      }
+      if (hit < 0) return;
+      GX.sel = hit;
+      if (GX.world) openMap(GX.nodes[hit].name);
+      else openRoomCard(GX.code, GX.nodes[hit].name);
     });
+    /* 双击只处理空白（重排）：命中节点时第一下单击已经进去了，不能再响应 */
     cv.addEventListener('dblclick', function(ev){
-      var hit = gxPick(ev);
-      if (hit >= 0){
-        if (GX.world) openMap(GX.nodes[hit].name);
-        else openRoomCard(GX.code, GX.nodes[hit].name);
-        return;
-      }
+      if (gxPick(ev) >= 0) return;
       /* 双击空白：取消所有钉住，让图重新排一次 */
       GX.nodes.forEach(function(n){ n.fx = null; n.fy = null; });
       GX.alpha = 1;
@@ -7289,8 +7382,6 @@ function parseSave(raw, onProgress){
 
     var playBtn = $('gx-play');
     if (playBtn) playBtn.addEventListener('click', function(){ gxTogglePlay(); });
-    var reBtn = $('gx-restart');
-    if (reBtn) reBtn.addEventListener('click', function(){ gxRestart(); });
     var startSel = $('gx-start');
     if (startSel) startSel.addEventListener('change', function(){ gxSetStart(startSel.value, true); });
     var orderSel = $('gx-order');
@@ -7344,6 +7435,13 @@ function parseSave(raw, onProgress){
     if (!GX) return;
     var d = GX.drag;
     if (d){
+      /* 「刚才那一下是拖拽」要传给紧接着派发的 click —— GX.drag 下面就被清空了，
+         click 里读不到 moved，这正是老代码 `if (d && d.moved) return` 从未生效的原因。
+         mouseup 若落在画布外不会有 click，用 setTimeout 兜底清掉，免得吞掉下一次点击。 */
+      GX.suppressClick = !!d.moved;
+      if (GX.suppressClick){
+        setTimeout(function(){ if (GX) GX.suppressClick = false; }, 0);
+      }
       if (d.hit >= 0){
         var nn = GX.nodes[d.hit];
         /* 默认"不固定"：拖动只是临时拽住（fx/fy），一松手就交回给力导向，节点会被拉回原位。
@@ -7848,6 +7946,15 @@ function parseSave(raw, onProgress){
   var roomModal = $('room-modal');
   var rmCode = '', rmRoom = '';
   var rmData = null, rmRuns = null, rmMarks = null, rmToken = 0, rmBound = false;
+  /* 右栏读数：check_room 用它断言「清单条数 == 徽章数」。layer 记来源，truncated 记编号是否不全 */
+  var rmSide = { rows: 0, layer: null, truncated: false };
+  /* P4：右栏第 i 行 → 画布上第 i 个出口格（行优先编号在导入时已排好，i 就是编号）。
+     画布画十字用的是「房间文件」，而右栏读的是「生效层」，实测有 76 间房两边出口条数
+     不等（模组给房间文件加了格、却没改 world，或反过来）。所以先把「行 → 格子」的对应
+     算清楚：优先按坐标匹配十字；条数相同才退化成按序号；都对不上就标 ok=false ——
+     那几行悬停时不高亮，绝不画一个悬空的徽章。 */
+  var rmExitLinks = [];
+  var rmHoverExit = -1;   /* 当前悬停的出口下标，-1 = 没有 */
   var rmOrder = [], rmIndex = -1;   /* 上一间/下一间：顺序＝地图弹窗当前标签的清单 */
   var rmShowClimb = true;      /* 「可攀爬墙」底色开关：大片底色，能一键关掉 */
   var rmView = { scale: 1, fit: 1, tx: 0, ty: 0, cw: 0, ch: 0, dpr: 1 };
@@ -7880,6 +7987,168 @@ function parseSave(raw, onProgress){
     return out;
   }
 
+  /* 生效记录（P4 口径 A，见《出口编号规则》§15.4）：
+     所有开启的来源里，order 最高、且**包含这间房**、且这间房**有出口数据**的那条。
+     为什么不能只按 order 取最高层：模组补丁层（order 100）经常压根没有这间房，
+     直接取会把 SL_C04 这种房间判成「没有出口」。徽章与右侧清单都读它，保证同源。 */
+  function effectiveRoom(code, name){
+    var rd = regionData(code), nm = String(name).toUpperCase();
+    var best = null, bestOrder = -1e9;
+    ((rd && rd.layers) || []).forEach(function(L){
+      if (L.enabled === false) return;
+      var order = (L.order == null ? 0 : Number(L.order));
+      (L.rooms || []).forEach(function(r){
+        if (String(r.name).toUpperCase() !== nm) return;
+        if (!(r.exits && r.exits.length)) return;
+        if (order >= bestOrder){
+          bestOrder = order;
+          best = { room: r, layerId: L.sourceId || L.id,
+                   layerName: L.sourceName || L.label || L.id, order: order };
+        }
+      });
+    });
+    return best;
+  }
+
+  /* 出口落在房间框的哪一边：只给右侧清单补一个「左侧 / 上方」这类提示，不参与编号 */
+  function rmExitSide(e, w, h){
+    if (!w || !h) return '';
+    var cx = (e.x || 0) / w, cy = (e.y || 0) / h;
+    if (cx < 0.18) return '左侧';
+    if (cx > 0.82) return '右侧';
+    if (cy < 0.18) return '上方';
+    if (cy > 0.82) return '下方';
+    return '';
+  }
+
+  /* ---- 出口清单跳转（S2）----
+     出口的 `to` 只有房间名，光看前缀推区域会错：`GATE_UW_LC` 这种门房间的实际归属
+     要看 world 定义（可能在 LC 也可能在 UW），所以第一次用到时把全部已加载区域的
+     房间名建成一张索引，之后 O(1)。区域数据变了（重导 / 删区域）就把索引置空重建。 */
+  var rmNameIndex = null;
+  var rmFrom = null;      /* 从别的房间跳进来时记一句来源，写进副标题 */
+
+  function rmBuildNameIndex(){
+    var idx = {};
+    var regions = state.regions || {};
+    Object.keys(regions).forEach(function(code){
+      var rd = regions[code];
+      ((rd && rd.layers) || []).forEach(function(L){
+        (L.rooms || []).forEach(function(room){
+          var k = String(room.name).toUpperCase();
+          if (!idx[k]) idx[k] = code;   /* 同名只记第一个：跨区域重名极少，先到先得 */
+        });
+      });
+    });
+    rmNameIndex = idx;
+    return idx;
+  }
+
+  function rmFindRoom(name){
+    var k = String(name == null ? '' : name).trim().toUpperCase();
+    if (!k) return null;
+    var idx = rmNameIndex || rmBuildNameIndex();
+    var code = idx[k];
+    return code ? { code: code, name: k } : null;
+  }
+
+  /* 点右栏某一行：有去向就跳过去，没去向只提示一句（不静默、也不假跳） */
+  function rmFollowExit(i){
+    var eff = effectiveRoom(rmCode, rmRoom);
+    var ex = (eff && eff.room && eff.room.exits) || [];
+    var e = ex[i];
+    if (!e) return false;
+    var to = e.to || null;
+    if (!to){
+      toast('第 ' + (i + 1) + ' 号出口没有连接目标（编号不全，或本来就是断开的口）');
+      return false;
+    }
+    var hit = rmFindRoom(to);
+    if (!hit){
+      toast('目标房间 ' + to + ' 不在已导入的数据里');
+      return false;
+    }
+    openRoomCard(hit.code, hit.name, null, {
+      fromName: rmRoom, fromCode: rmCode, exitIndex: i
+    });
+    return true;
+  }
+
+  /* 右栏第 i 行 → 画布上的出口格。十字（房间文件里的 type=4）是画布的唯一依据，
+     所以以它为准；换不到的格子标 ok=false，悬停时不高亮、行尾提示一句。 */
+  function rmBuildExitLinks(ex){
+    var crosses = [];
+    if (rmMarks && rmMarks.marks){
+      rmMarks.marks.forEach(function(m){
+        if (m[2] === 'exit') crosses.push({ x: m[0], y: m[1] });
+      });
+    }
+    var used = [], out = [], i, k, hit;
+    var sameCount = crosses.length === ex.length;
+    for (i = 0; i < ex.length; i++){
+      hit = -1;
+      for (k = 0; k < crosses.length; k++){
+        if (used[k]) continue;
+        if (crosses[k].x === ex[i].x && crosses[k].y === ex[i].y){ hit = k; break; }
+      }
+      /* 坐标对不上但条数相同：两边都是行优先排过序的，顺序可以信任 */
+      if (hit < 0 && sameCount && crosses[i] && !used[i]) hit = i;
+      if (hit < 0){ out.push({ x: ex[i].x, y: ex[i].y, ok: false }); continue; }
+      used[hit] = true;
+      out.push({ x: crosses[hit].x, y: crosses[hit].y, ok: true });
+    }
+    return out;
+  }
+
+  /* 右栏出口清单（B5 骨架 + S2 跳转 + P4 悬停高亮） */
+  function renderRoomSide(code, name){
+    var box = $('rm-exits'), cnt = $('rm-exit-n'), note = $('rm-exit-note');
+    if (!box) return;
+    var eff = effectiveRoom(code, name);
+    var w = rmData ? rmData.w : 0, h = rmData ? rmData.h : 0;
+    if (!eff){
+      box.innerHTML = '<div class="rm-side-empty">这间房没有 world 依据（或所有来源都缺连接数据），' +
+        '无法标注管道去向。</div>';
+      if (cnt) cnt.textContent = '';
+      if (note) note.textContent = '';
+      rmSide = { rows: 0, layer: null, truncated: false };
+      rmExitLinks = [];
+      rmHoverExit = -1;
+      return;
+    }
+    var ex = eff.room.exits || [];
+    var truncated = eff.room.exitNumbering === 'truncated';
+    rmHoverExit = -1;
+    rmExitLinks = rmBuildExitLinks(ex);
+    var noCell = 0;
+    var html = '';
+    for (var i = 0; i < ex.length; i++){
+      var to = ex[i].to || null;
+      var side = rmExitSide(ex[i], w, h);
+      var cellOk = !!(rmExitLinks[i] && rmExitLinks[i].ok);
+      if (!cellOk) noCell++;
+      html += '<div class="rm-exit-row' + (to ? ' is-link' : ' is-none') +
+        (cellOk ? '' : ' is-nocell') + '" data-rmexit="' + i + '"' +
+        ' title="第 ' + (i + 1) + ' 号出口' +
+          (to ? ' → ' + esc(to) + '（点击过去）' : '（没有连接）') +
+          (cellOk ? '（悬停看画布高亮）' : '（本层画布没有对应出口格）') + '"' +
+        (to ? ' role="button" tabindex="0"' : '') + '>' +
+        '<span class="rm-exit-n">' + (i + 1) + '</span>' +
+        '<span class="rm-exit-to">' + (to ? esc(to) : '（未知）') + '</span>' +
+        (side ? '<span class="rm-exit-dir">' + side + '</span>' : '') +
+        '</div>';
+    }
+    box.innerHTML = html;
+    if (cnt) cnt.textContent = ex.length + ' 个' + (truncated ? ' · 编号不全' : '');
+    if (note) note.textContent = (truncated
+      ? '出口数与连接数不等：尾部编号没有去向（标「未知」），编号仍按位置保留。'
+      : '') +
+      (noCell ? '其中 ' + noCell + ' 个出口在本层画布上没有对应格子，悬停不会高亮。' : '') +
+      '来源：' + eff.layerName;
+    rmSide = { rows: ex.length, layer: eff.layerId, truncated: truncated,
+               noCell: noCell };
+  }
+
   /* ---- 上一间 / 下一间 ----
      顺序取自地图弹窗「当前标签」的那份清单（全部 / 未探索 / 已探索），所以卡片里的顺序
      和你在清单里看到的顺序是同一个；不在清单里的房间（比如从地图方块点进来的业力门）就单独成表。 */
@@ -7902,10 +8171,38 @@ function parseSave(raw, onProgress){
     openRoomCard(rmCode, target);
   }
 
-  function openRoomCard(code, name, layerId){
+  /* ---- 全屏 / 紧凑（B5）----
+     全屏只是给房间卡套一个 .full 类：右栏显隐、画布撑高都由 CSS 负责，JS 不碰布局。
+     状态存 config.ui.roomCardFull（已在 core/paths.py 的 DEFAULT_UI 登记，
+     否则 save_config 的白名单会把它裁掉、重启就退回紧凑）。 */
+  function rmApplyFull(on, silent){
+    var card = document.querySelector('#room-modal .room-card');
+    if (!card) return;
+    on = !!on;
+    card.classList.toggle('full', on);
+    var btn = $('rm-full');
+    if (btn){
+      btn.textContent = on ? '紧凑' : '全屏';
+      btn.title = on ? '切回紧凑（F）' : '全屏（F）';
+      btn.classList.toggle('on', on);
+    }
+    if (!silent){
+      state.roomCardFull = on;
+      if (hasBridge()) bridgeCall('save_config', { ui: { roomCardFull: on } }).catch(function(){});
+    }
+    /* 切回紧凑时右栏整块隐藏，残留的悬停高亮必须一起收掉，否则画布上会留一个没人对应的徽章 */
+    if (!on) rmSetHoverExit(-1);
+    /* 全屏前后 stage 的高度完全不同，必须重量一次，否则画布还停在旧尺寸 */
+    if (rmData) setTimeout(function(){ rmEnsureSize(0); }, 40);
+  }
+
+  function openRoomCard(code, name, layerId, from){
     if (!roomModal) return;
     var token = ++rmToken;
     rmCode = code; rmRoom = name;
+    /* from 只在「从出口清单跳过来」时传；上一间/下一间、地图点选一律清空，
+       免得副标题挂着上次的来路 */
+    rmFrom = from || null;
     gxRoomMarkUI();
     rmAdoptOrder(code, name);
     rmSetNav();
@@ -7913,7 +8210,14 @@ function parseSave(raw, onProgress){
     $('rm-title').textContent = name || '房间布局';
     $('rm-sub').textContent = '正在读取布局…';
     $('rm-legend').innerHTML = '';
+    if ($('rm-exits')) $('rm-exits').innerHTML = '<div class="rm-side-empty">正在读取布局…</div>';
+    if ($('rm-exit-n')) $('rm-exit-n').textContent = '';
+    if ($('rm-exit-note')) $('rm-exit-note').textContent = '';
+    rmSide = { rows: 0, layer: null, truncated: false };
+    rmExitLinks = [];
+    rmHoverExit = -1;
     roomModal.hidden = false;
+    rmApplyFull(state.roomCardFull, true);
     if (!bridgeCall) return;
     bridgeCall('room_geometry', code, name, layerId || null).then(function(res){
       if (token !== rmToken) return;
@@ -7929,6 +8233,7 @@ function parseSave(raw, onProgress){
     if (!roomModal) return;
     roomModal.hidden = true;
     rmData = null; rmRuns = null; rmMarks = null;
+    rmHoverExit = -1; rmExitLinks = [];
   }
 
   function roomCardError(res){
@@ -8010,6 +8315,9 @@ function parseSave(raw, onProgress){
     if (meta.shelter) bits.push('庇护所');
     if (meta.gate) bits.push('业力门');
     if (info.pearl) bits.push('有珍珠');
+    if (rmFrom && rmFrom.fromName){
+      bits.push('← 来自 ' + rmFrom.fromName + ' 的 ' + (rmFrom.exitIndex + 1) + ' 号出口');
+    }
     $('rm-sub').textContent = bits.join(' · ');
     $('rm-sub').title = $('rm-sub').textContent;   /* 头部单行省略，超长时悬停看全文 */
 
@@ -8053,6 +8361,7 @@ function parseSave(raw, onProgress){
       });
     }
 
+    renderRoomSide(code, name);
     bindRoomCardOnce();
     rmEnsureSize(0);
     /* 弹窗刚取消 hidden 时，元素尺寸可能还没算出来（clientWidth = 0），
@@ -8177,7 +8486,9 @@ function parseSave(raw, onProgress){
     }
 
     /* 十字：出口 / 巢穴 / 生物通道。同一个 path 只 fill 一次，
-       两个矩形重叠处不会叠出深色；同一类颜色合并成一次 fill，快得多。 */
+       两个矩形重叠处不会叠出深色；同一类颜色合并成一次 fill，快得多。
+       P4：悬停右栏某行时，出口这一类的其余十字压暗到 0.28，被悬停的那个不画
+       （由屏幕空间的高亮环 + 数字接手），这样缩得再小也能一眼看出是哪一个。 */
     if (rmMarks && rmMarks.marks.length){
       var ARM = 0.9, TH = 0.32;
       var markC = {
@@ -8185,9 +8496,17 @@ function parseSave(raw, onProgress){
         den: (cs.getPropertyValue('--rm-den') || '').trim() || '#ee3b3b',
         creature: (cs.getPropertyValue('--rm-creature') || '').trim() || '#4d5cff'
       };
+      var hot = (rmHoverExit >= 0) ? rmExitLinks[rmHoverExit] : null;
       ['exit', 'den', 'creature'].forEach(function(kind){
         var list = rmMarks.marks.filter(function(m){ return m[2] === kind; });
         if (!list.length) return;
+        var dim = (kind === 'exit' && hot && hot.ok);
+        if (dim){
+          list = list.filter(function(m){ return !(m[0] === hot.x && m[1] === hot.y); });
+          if (!list.length) return;
+        }
+        ctx.save();
+        if (dim) ctx.globalAlpha = 0.28;
         ctx.fillStyle = markC[kind];
         ctx.beginPath();
         list.forEach(function(m){
@@ -8196,6 +8515,7 @@ function parseSave(raw, onProgress){
           ctx.rect(mx - TH / 2, my - ARM / 2, TH, ARM);
         });
         ctx.fill();
+        ctx.restore();
       });
     }
 
@@ -8218,7 +8538,67 @@ function parseSave(raw, onProgress){
       ctx.stroke();
     }
 
+    /* P4：只在悬停时出现的编号徽章。必须切回屏幕空间画 —— 跟着 dpr*s 走的话，
+       放大时徽章会跟着胀大、缩小时糊成一坨。 */
+    drawExitBadge(ctx, dpr, cs);
+
     updateRoomPct();
+  }
+
+  /* 悬停右栏第 i 行 → 画布上第 i 个出口的「环 + 数字」。
+     一次只画一个，所以不会像常驻徽章那样在出口密集处叠成一团。 */
+  function drawExitBadge(ctx, dpr, cs){
+    if (rmHoverExit < 0) return;
+    var link = rmExitLinks[rmHoverExit];
+    if (!link || !link.ok) return;
+    var accent = (cs.getPropertyValue('--accent') || '').trim() || '#e8b04a';
+    var ink = (cs.getPropertyValue('--on-accent') || '').trim() || '#0f1216';
+    var s = rmView.scale;
+    var cx = rmView.tx + (link.x + 0.5) * s;
+    var cy = rmView.ty + (link.y + 0.5) * s;
+    if (cx < -40 || cy < -40 || cx > rmView.cw + 40 || cy > rmView.ch + 40) return;
+
+    var label = String(rmHoverExit + 1);
+    var R = Math.max(7, Math.min(11, s * 0.55));
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    /* 光晕：把周围压暗的十字再衬一层，缩小后也能定位 */
+    ctx.beginPath();
+    ctx.arc(cx, cy, R + 5, 0, Math.PI * 2);
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = accent;
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.fillStyle = accent;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = ink;
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = ink;
+    ctx.font = 'bold ' + Math.round(R * (label.length > 1 ? 0.92 : 1.2)) + 'px system-ui,-apple-system,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, cy + 0.5);
+    ctx.restore();
+  }
+
+  /* 悬停切换：右栏行加 is-mark，画布重画一次。同一下标重复触发不重绘。 */
+  function rmSetHoverExit(i){
+    if (i === rmHoverExit) return;
+    rmHoverExit = (i >= 0 && i < rmExitLinks.length) ? i : -1;
+    var rows = document.querySelectorAll('#rm-exits .rm-exit-row');
+    Array.prototype.forEach.call(rows, function(el){
+      var k = parseInt(el.getAttribute('data-rmexit'), 10);
+      el.classList.toggle('is-mark', k === rmHoverExit);
+    });
+    if (rmData && rmRuns) drawRoom();
   }
 
   /* 管道口的 T 形：横条 0.85×0.15 格贴着「外缘」，竖条 0.29×0.47 格朝段内伸。
@@ -8270,12 +8650,69 @@ function parseSave(raw, onProgress){
     rmBound = true;
     var st = $('rm-stage'), cv = $('rm-canvas');
 
+    /* 右栏出口清单：点一行就跳到那间房（S2）。用事件委托，清单重绘后不用重新绑定。 */
+    var exBox = $('rm-exits');
+    if (exBox){
+      /* P4：悬停某行 → 画布上对应的那个出口点亮（常驻不画徽章，避免视觉噪音）。
+         委托到容器上：mouseover 一路冒泡上来，落在行内任一子元素都能定位到 data-rmexit。 */
+      exBox.addEventListener('mouseover', function(ev){
+        var el = ev.target;
+        while (el && el !== exBox && el.getAttribute && el.getAttribute('data-rmexit') == null){
+          el = el.parentNode;
+        }
+        if (!el || el === exBox || !el.getAttribute) { rmSetHoverExit(-1); return; }
+        var i = parseInt(el.getAttribute('data-rmexit'), 10);
+        rmSetHoverExit(isNaN(i) ? -1 : i);
+      });
+      exBox.addEventListener('mouseleave', function(){ rmSetHoverExit(-1); });
+      /* 键盘焦点也算悬停，免得只能靠鼠标 */
+      exBox.addEventListener('focusin', function(ev){
+        var el = ev.target;
+        if (el && el.getAttribute && el.getAttribute('data-rmexit') != null){
+          var i = parseInt(el.getAttribute('data-rmexit'), 10);
+          rmSetHoverExit(isNaN(i) ? -1 : i);
+        }
+      });
+      exBox.addEventListener('focusout', function(){ rmSetHoverExit(-1); });
+      exBox.addEventListener('click', function(ev){
+        var el = ev.target;
+        while (el && el !== exBox && el.getAttribute && el.getAttribute('data-rmexit') == null){
+          el = el.parentNode;
+        }
+        if (!el || el === exBox || !el.getAttribute) return;
+        var i = parseInt(el.getAttribute('data-rmexit'), 10);
+        if (!isNaN(i)) rmFollowExit(i);
+      });
+      exBox.addEventListener('keydown', function(ev){
+        if (ev.key !== 'Enter' && ev.key !== ' ') return;
+        var el = ev.target;
+        if (el && el.getAttribute && el.getAttribute('data-rmexit') != null){
+          ev.preventDefault();
+          var i = parseInt(el.getAttribute('data-rmexit'), 10);
+          if (!isNaN(i)) rmFollowExit(i);
+        }
+      });
+    }
     Array.prototype.forEach.call(document.querySelectorAll('#rm-mark [data-rmmark]'), function(b){
       b.addEventListener('click', function(){
         setRoomMark(rmCode, rmRoom, parseInt(b.getAttribute('data-rmmark'), 10));
         gxRoomMarkUI();
         if (document.getElementById('map-stage')) openMap(rmCode);
       });
+    });
+
+    var fullBtn = $('rm-full');
+    if (fullBtn) fullBtn.addEventListener('click', function(){ rmApplyFull(!state.roomCardFull); });
+
+    /* F 键切全屏 / 紧凑：只在房间卡打开、且焦点不在输入框里时生效 */
+    document.addEventListener('keydown', function(ev){
+      if (!roomModal || roomModal.hidden) return;
+      if (ev.key !== 'f' && ev.key !== 'F') return;
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      var t = ev.target;
+      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+      ev.preventDefault();
+      rmApplyFull(!state.roomCardFull);
     });
 
     var exBtn = $('rm-exclude');
@@ -8432,6 +8869,7 @@ function parseSave(raw, onProgress){
         if (cfg.ui.roomMarks && typeof cfg.ui.roomMarks === 'object') state.roomMarks = cfg.ui.roomMarks;
         if (cfg.ui.roomExcluded && typeof cfg.ui.roomExcluded === 'object') state.roomExcluded = cfg.ui.roomExcluded;
         if (typeof cfg.ui.roomStrict === 'boolean') state.roomStrict = cfg.ui.roomStrict;
+        if (typeof cfg.ui.roomCardFull === 'boolean') state.roomCardFull = cfg.ui.roomCardFull;
         if (cfg.ui.graphColors && typeof cfg.ui.graphColors === 'object'){
           state.graphColors = {
             dark: (cfg.ui.graphColors.dark && typeof cfg.ui.graphColors.dark === 'object') ? cfg.ui.graphColors.dark : {},
@@ -8681,7 +9119,56 @@ function parseSave(raw, onProgress){
       info.prevRoom = rmOrder[rmIndex - 1] || '';
       var cv = $('rm-canvas');
       info.canvas = cv ? [cv.width, cv.height] : [0, 0];
+      /* B5：全屏状态与右栏读数（check_room 用这几条断言两栏布局与清单） */
+      var cardEl = document.querySelector('#room-modal .room-card');
+      var sideEl = $('rm-side'), bodyEl = $('rm-body');
+      info.full = !!(cardEl && cardEl.classList.contains('full'));
+      info.sideShown = !!(sideEl && window.getComputedStyle(sideEl).display !== 'none');
+      info.exits = document.querySelectorAll('#rm-exits .rm-exit-row').length;
+      info.exitsCounted = rmSide.rows || 0;
+      info.exitsLayer = rmSide.layer || null;
+      info.exitTruncated = !!rmSide.truncated;
+      info.exitsEmpty = document.querySelectorAll('#rm-exits .rm-side-empty').length;
+      info.exitsUnknown = document.querySelectorAll('#rm-exits .rm-exit-row.is-none').length;
+      /* P4：悬停高亮的读数（check_room 用来断言「行 i → 格子 i」和徽章真的画出来了） */
+      info.hoverExit = rmHoverExit;
+      info.exitNoCell = rmSide.noCell || 0;
+      info.exitLinks = rmExitLinks.map(function(l){ return l.ok ? 1 : 0; });
+      info.hoverRowMark = document.querySelectorAll('#rm-exits .rm-exit-row.is-mark').length;
+      info.hoverCell = (rmHoverExit >= 0 && rmExitLinks[rmHoverExit])
+        ? [rmExitLinks[rmHoverExit].x, rmExitLinks[rmHoverExit].y, rmExitLinks[rmHoverExit].ok ? 1 : 0]
+        : null;
+      info.exitNote = $('rm-exit-note') ? $('rm-exit-note').textContent : '';
+      info.sideW = sideEl ? sideEl.clientWidth : 0;
+      info.stageH = $('rm-stage') ? $('rm-stage').clientHeight : 0;
+      info.bodyOverflow = bodyEl ? bodyEl.scrollWidth - bodyEl.clientWidth : 0;
+      info.cardW = cardEl ? cardEl.clientWidth : 0;
+      info.cardH = cardEl ? cardEl.clientHeight : 0;
+      info.viewW = window.innerWidth || 0;
+      info.viewH = window.innerHeight || 0;
       return info;
+    },
+    /* 悬停徽章：在出口格中心偏一点（避开数字笔画）取像素，确认强调色真的画出来了 */
+    roomBadgePixel: function(){
+      if (!rmData || rmHoverExit < 0) return { ready: false };
+      var link = rmExitLinks[rmHoverExit];
+      if (!link || !link.ok) return { ready: false, noCell: true };
+      var cv = $('rm-canvas'), ctx = cv.getContext('2d');
+      var s = rmView.scale, dpr = rmView.dpr;
+      var cx = rmView.tx + (link.x + 0.5) * s, cy = rmView.ty + (link.y + 0.5) * s;
+      if (cx < 2 || cy < 2 || cx >= rmView.cw - 2 || cy >= rmView.ch - 2){
+        return { ready: false, off: true };
+      }
+      var R = Math.max(7, Math.min(11, s * 0.55));
+      var px = Math.floor((cx + R * 0.7) * dpr), py = Math.floor(cy * dpr);
+      var d = ctx.getImageData(px, py, 1, 1).data;
+      var hex = (window.getComputedStyle($('rm-stage')).getPropertyValue('--accent') || '').trim();
+      var want = [parseInt(hex.substr(1, 2), 16), parseInt(hex.substr(3, 2), 16), parseInt(hex.substr(5, 2), 16)];
+      return {
+        ready: true, cell: [link.x, link.y], radius: Math.round(R),
+        match: Math.abs(d[0] - want[0]) < 12 && Math.abs(d[1] - want[1]) < 12 && Math.abs(d[2] - want[2]) < 12,
+        actual: [d[0], d[1], d[2]], expect: want
+      };
     },
     /* 随机抽 n 个格子，比对画布像素颜色与 cells 的期望值（空气/非空气） */
     roomSample: function(n){
@@ -8808,17 +9295,24 @@ function parseSave(raw, onProgress){
       return true;
     },
     /* 直接看某个区域在某角色下的房间集合（不依赖这个区域在不在当前战役里） */
-    roomSets: function(code, slugcat){
+    roomSets: function(code, slugcat, withDetail){
       var rd = regionData(code);
       if (!rd) return { missing: true };
       var sets = regionRoomSets(rd, slugcat || (currentCampaign() || {}).slugcat);
       if (!sets) return { missing: true };
-      return {
+      var out = {
         total: sets.total, roleDrop: sets.roleDropped || 0,
         manualDrop: sets.manualDropped || 0, condDrop: sets.conditionalDropped || 0,
         strict: state.roomStrict !== false,
         names: Object.keys(sets.names)
       };
+      /* 庇护所 / 门 / 邻接表体积不小，只在自检脚本明确要的时候才带出来 */
+      if (withDetail){
+        out.shelters = Object.keys(sets.shelters || {});
+        out.gates = Object.keys(sets.gates || {});
+        out.nbr = sets.nbr || {};
+      }
+      return out;
     },
     region: function(code, slugcat){
       var c = window.__rwTest.campaign(slugcat);

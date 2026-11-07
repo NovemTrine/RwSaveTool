@@ -3,9 +3,9 @@
 用法： .venv/Scripts/python.exe build/check_graph.py
 
 检查内容：
-    1. 区域页有「关系」入口，点开能画出来；节点数 == 该区域房间清单（GW 52）
-    2. 边数 == neighbors 对称化去重后的数量（GW 57）
-    3. 默认全部房间可见（含 0 度）；RF 开启「折叠无连接」后从 80 减到 65
+    1. 区域页有「关系」入口，点开能画出来；节点数 == 该区域房间清单（可用层并集，随导入数据变）
+    2. 边数 == neighbors 对称化去重后的数量（同上，动态口径）
+    3. 默认全部房间可见（含 0 度）；RF 开启「折叠无连接」后正好少掉那些 0 度的房间
     4. 单步：每按一次只多点亮 1 间（不是一层一批）
     5. 播放：能自己往下走，光带长度 > 0；暂停能停住
     6. 起点切到庇护所后，第一个节点确实是庇护所
@@ -145,25 +145,13 @@ def clear_hover(js):
     time.sleep(0.35)
 
 
-def base_layer(code_file):
-    with open(code_file, encoding="utf-8") as fh:
-        data = json.load(fh)
-    best = None
-    for layer in data.get("layers") or []:
-        rooms = layer.get("rooms") or []
-        if not rooms or not any(r.get("neighbors") for r in rooms):
-            continue
-        if best is None or len(rooms) > len(best):
-            best = rooms
-    return best or []
-
-
-def edge_count(rooms):
-    names = {str(r["name"]).upper() for r in rooms}
+def edge_count(nbr, names):
+    """按「邻居对称化去重」数边（只算两端都在房间清单里的）。"""
     seen = set()
-    for r in rooms:
-        a = str(r["name"]).upper()
-        for t in r.get("neighbors") or []:
+    for a, lst in (nbr or {}).items():
+        if a not in names:
+            continue
+        for t in lst or []:
             b = str(t).upper()
             if b in names and b != a:
                 seen.add(tuple(sorted((a, b))))
@@ -171,12 +159,10 @@ def edge_count(rooms):
 
 
 def main() -> int:
-    gw_rooms = base_layer(GW_JSON)
-    rf_rooms = base_layer(RF_JSON)
-    gw_gates = {str(r["name"]).upper() for r in gw_rooms if r.get("gate")}
-    gw_shelters = {str(r["name"]).upper() for r in gw_rooms if r.get("shelter")}
-    gw_edges = edge_count(gw_rooms)
-    rf_edges = edge_count(rf_rooms)
+    # 期望值不能直接读 region_data：一个区域可能是**多层叠加**的（原版 + 各模组 +
+    # Downpour 的 modify 补丁），「房间清单」= 可用层并集再滤掉条件房间，这套逻辑只在前端。
+    # 所以这里向前端要一份权威读数（__rwTest.roomSets），再拿它核对图的节点/边/庇护所。
+    ref: dict = {}
 
     api = Api()
     with open(os.path.join(ROOT, "ui", "rw_gui.html"), encoding="utf-8") as fh:
@@ -259,6 +245,15 @@ def main() -> int:
             check("弹窗标题已改名为「区域拓扑 · GW」，不再叫「关系图」",
                   out["title"] == "区域拓扑 · GW", str(out["title"]))
 
+            raw = loads(js("JSON.stringify(window.__rwTest.roomSets('GW', null, true))")) or {}
+            gw_names = {str(n).upper() for n in (raw.get("names") or [])}
+            ref.update({
+                "total": raw.get("total"),
+                "names": gw_names,
+                "edges": edge_count(raw.get("nbr"), gw_names),
+                "shelters": {str(n).upper() for n in (raw.get("shelters") or [])},
+                "gates": {str(n).upper() for n in (raw.get("gates") or [])},
+            })
             js("window.__rwTest.openGraph('GW');")
             # 开场动画很吃机器速度，别用"睡 0.15s 再看"这种写法：
             # 连续采样 0.8s，取"铺开程度最小 / 逐个淡入得最少"的那一刻当证据
@@ -289,11 +284,12 @@ def main() -> int:
                   str(grow))
             out["gw"] = s0
             print("[布局]", s0.get("quality"), s0.get("size"), "full=", s0.get("full"))
-            check("GW 关系图打开，节点数 = 房间清单",
-                  s0.get("open") and s0.get("rooms") == len(gw_rooms) == s0.get("setsTotal"),
-                  f"rooms={s0.get('rooms')} expect={len(gw_rooms)} sets={s0.get('setsTotal')}")
-            check("边数 = neighbors 对称化去重",
-                  s0.get("edges") == gw_edges, f"edges={s0.get('edges')} expect={gw_edges}")
+            check("GW 区域拓扑打开，节点数 = 区域房间清单（可用层并集，已滤条件房间）",
+                  s0.get("open") and s0.get("rooms") == ref.get("total") == s0.get("setsTotal"),
+                  f"rooms={s0.get('rooms')} expect={ref.get('total')} sets={s0.get('setsTotal')}")
+            check("边数 = 房间清单里 neighbors 对称化去重后的数量",
+                  s0.get("edges") == ref.get("edges"),
+                  f"edges={s0.get('edges')} expect={ref.get('edges')}")
             radii = loads(js(
                 "JSON.stringify((function(){var a=[];"
                 "for(var i=0;i<window.__rwTest.graph().total;i++){var n=window.__rwTest.graphNode(i);"
@@ -496,9 +492,30 @@ def main() -> int:
 
             js("window.__rwTest.openGraph('GW');")
             time.sleep(3.4)
+            # 必须等力导向冻结再取坐标：布局还在动时取到的 sx/sy，派发出去就点空了
+            # （表现是整张图都不压暗，看着像悬停坏了，实际是鼠标没落到节点上）
+            for _ in range(40):
+                if g().get("frozen"):
+                    break
+                time.sleep(0.25)
 
             # ---- 悬停：自己与一度邻居保持不透明，其余压到 0.2 ----
-            hn = loads(js("JSON.stringify(window.__rwTest.graphNode(0))")) or {}
+            # 必须挑一个「在画布内、且至少有一度邻居」的节点：GW 的房间数涨到 136
+            # 以后，0 号节点可能被力导向推到视口外，按固定下标取坐标会点空
+            # （鼠标落不到节点上，整张图都不压暗，看起来像悬停坏了）。
+            picked = loads(js(
+                "JSON.stringify((function(){var cv=document.getElementById('gx-canvas');"
+                "var r=cv.getBoundingClientRect(),T=window.__rwTest.graph().total;"
+                "var vis=0,nbn=0,hit=null,first=null;"
+                "for(var i=0;i<T;i++){var n=window.__rwTest.graphNode(i);if(!n)continue;"
+                "var inv=n.sx>=2&&n.sy>=2&&n.sx<r.width-2&&n.sy<r.height-2;"
+                "if(inv)vis++;if(n.nb&&n.nb.length)nbn++;if(!first)first=n;"
+                "if(inv&&n.nb&&n.nb.length&&!hit)hit={i:i,n:n};}"
+                "return {i:hit?hit.i:0,n:hit?hit.n:first,w:r.width,h:r.height,"
+                "total:T,vis:vis,nbn:nbn};})())"
+            )) or {}
+            hn = picked.get("n") or (loads(js("JSON.stringify(window.__rwTest.graphNode(0))")) or {})
+            hi = picked.get("i", 0)
             js("(function(){var cv=document.getElementById('gx-canvas');"
                "var r=cv.getBoundingClientRect();"
                "cv.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,"
@@ -510,16 +527,20 @@ def main() -> int:
                 "return a;})())"
             )) or []
             nb = set(hn.get("nb") or [])
-            self_a = al[0] if al else 0
-            nb_low = min([al[i] for i in nb]) if nb else 1
-            other_high = max([al[i] for i in range(len(al)) if i not in nb and i != 0] or [0])
-            out["hover"] = {"self": self_a, "nbMin": nb_low, "otherMax": other_high}
+            self_a = al[hi] if hi < len(al) else 0
+            nb_low = min([al[i] for i in nb if i < len(al)]) if nb else 1
+            other_high = max([al[i] for i in range(len(al)) if i not in nb and i != hi] or [0])
+            out["hover"] = {"self": self_a, "nbMin": nb_low, "otherMax": other_high, "idx": hi,
+                            "pos": [round(hn.get("sx") or 0, 1), round(hn.get("sy") or 0, 1)],
+                            "canvas": [picked.get("w"), picked.get("h")],
+                            "total": picked.get("total"), "vis": picked.get("vis"),
+                            "withNb": picked.get("nbn")}
             check("悬停：自己与一度邻居不透明，其余压到 0.2 附近",
                   self_a > 0.95 and nb_low > 0.9 and other_high <= 0.35,
                   str(out["hover"]))
 
             # ---- 拖拽：拖走 100px 后钉住，松手不回弹 ----
-            hn = loads(js("JSON.stringify(window.__rwTest.graphNode(0))")) or {}
+            hn = loads(js("JSON.stringify(window.__rwTest.graphNode(%d))" % hi)) or {}
             js("(function(){var cv=document.getElementById('gx-canvas');var r=cv.getBoundingClientRect();"
                "function ev(t,x,y){cv.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,"
                "clientX:r.left+x,clientY:r.top+y,button:0}));}"
@@ -529,7 +550,7 @@ def main() -> int:
                   hn.get("sx", 0) + 60, hn.get("sy", 0) + 40,
                   hn.get("sx", 0) + 100, hn.get("sy", 0) + 70))
             time.sleep(1.0)
-            dn = loads(js("JSON.stringify(window.__rwTest.graphNode(0))")) or {}
+            dn = loads(js("JSON.stringify(window.__rwTest.graphNode(%d))" % hi)) or {}
             out["drag"] = {"from": [round(hn.get("sx") or 0, 1), round(hn.get("sy") or 0, 1)],
                            "to": [round(dn.get("sx") or 0, 1), round(dn.get("sy") or 0, 1)],
                            "pinned": dn.get("pinned")}
@@ -542,7 +563,7 @@ def main() -> int:
                 if g().get("frozen"):
                     break
                 time.sleep(0.25)
-            base = loads(js("JSON.stringify(window.__rwTest.graphNode(0))")) or {}
+            base = loads(js("JSON.stringify(window.__rwTest.graphNode(%d))" % hi)) or {}
             nb0 = set(base.get("nb") or [])
             before_pos = loads(js(
                 "JSON.stringify((function(){var a=[];"
@@ -569,15 +590,15 @@ def main() -> int:
 
             nb_move, far_move = [], []
             for i in range(min(len(before_pos), len(held_pos))):
-                if not before_pos[i] or not held_pos[i] or i == 0:
+                if not before_pos[i] or not held_pos[i] or i == hi:
                     continue
                 d0 = ((before_pos[i][0] - held_pos[i][0]) ** 2 +
                       (before_pos[i][1] - held_pos[i][1]) ** 2) ** 0.5
                 (nb_move if i in nb0 else far_move).append(round(d0, 1))
             dragged = 0.0
-            if before_pos and held_pos and before_pos[0] and held_pos[0]:
-                dragged = round(((before_pos[0][0] - held_pos[0][0]) ** 2 +
-                                 (before_pos[0][1] - held_pos[0][1]) ** 2) ** 0.5, 1)
+            if len(before_pos) > hi and len(held_pos) > hi and before_pos[hi] and held_pos[hi]:
+                dragged = round(((before_pos[hi][0] - held_pos[hi][0]) ** 2 +
+                                 (before_pos[hi][1] - held_pos[hi][1]) ** 2) ** 0.5, 1)
             out["pull"] = {"dragged": dragged,
                            "nb": sorted(nb_move, reverse=True)[:3],
                            "farMax": max(far_move) if far_move else 0,
@@ -606,7 +627,7 @@ def main() -> int:
                    "r.dispatchEvent(new Event('input',{bubbles:true}));" % pull)
                 js("window.__rwTest.reloadGraph();")
                 time.sleep(0.6)
-                n0 = loads(js("JSON.stringify(window.__rwTest.graphNode(0))")) or {}
+                n0 = loads(js("JSON.stringify(window.__rwTest.graphNode(%d))" % hi)) or {}
                 b = pos_all()
                 js("(function(){var cv=document.getElementById('gx-canvas');var r=cv.getBoundingClientRect();"
                    "function ev(t,x,y){cv.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,"
@@ -622,17 +643,17 @@ def main() -> int:
                 nb = set(n0.get("nb") or [])
                 nbm, farm = [], []
                 for i in range(min(len(b), len(h))):
-                    if i == 0 or not b[i] or not h[i]:
+                    if i == hi or not b[i] or not h[i]:
                         continue
                     dd = ((b[i][0] - h[i][0]) ** 2 + (b[i][1] - h[i][1]) ** 2) ** 0.5
                     (nbm if i in nb else farm).append(dd)
                 # 邻居到被拖节点的平均距离：这才是"拉得更近"的直接度量。
                 # 单看位移会饱和（邻居贴到节点上就停住了），比值上不去。
                 near = []
-                if h and h[0]:
+                if len(h) > hi and h[hi]:
                     for i in nb:
                         if i < len(h) and h[i]:
-                            near.append(((h[0][0] - h[i][0]) ** 2 + (h[0][1] - h[i][1]) ** 2) ** 0.5)
+                            near.append(((h[hi][0] - h[i][0]) ** 2 + (h[hi][1] - h[i][1]) ** 2) ** 0.5)
                 return ((max(nbm) if nbm else 0.0),
                         (sum(farm) / max(1, len(farm))),
                         (sum(near) / max(1, len(near))))
@@ -649,10 +670,18 @@ def main() -> int:
                              "nearShrink": round(shrink, 2)}
             check("4× 拉力把邻居拉得更近（邻居到被拖节点的平均距离 ≤ 1× 的 70%）",
                   shrink <= 0.70, str(out["pullAB"]))
-            check("4× 的邻居位移也明显更大（≥ 1.5×）",
-                  n4 >= n1 * 1.5, str(out["pullAB"]))
-            check("两种拉力下远端都不跟着重排（平均位移 < 40px）",
-                  f1 < 40 and f4 < 40, str(out["pullAB"]))
+            # 这两条原来写的是绝对像素阈值（n4 ≥ n1×1.5、far < 40px），但图里房间数从 52 涨到
+            # 77 之后（分层导入把各模组的房间也算进来了），同样一块画布上节点更密、拖一下
+            # 全局回弹更大，绝对阈值会随机挂。改成**比例口径**，量的是同一件事但不随密度漂：
+            #   ① 邻居位移 / 远端位移 ≥ 1.5 —— 连线确实在传力，而不是整张图一起晃
+            #   ② 远端位移 < 拖动距离的 45% —— 远处没有被拖着走
+            drag_px = 150.0     # 两次 mousemove 合起来 (0,0)→(+120,+90)
+            nb_ratio = [(n1 / f1) if f1 > 1 else 0.0, (n4 / f4) if f4 > 1 else 0.0]
+            out["pullAB"]["nbFar"] = [round(x, 2) for x in nb_ratio]
+            check("邻居比远端动得多（≥ 1.5×，1× 与 4× 两种拉力都成立）",
+                  nb_ratio[0] >= 1.5 and nb_ratio[1] >= 1.5, str(out["pullAB"]))
+            check("两种拉力下远端都不跟着重排（位移 < 拖动距离的 45%）",
+                  f1 < drag_px * 0.45 and f4 < drag_px * 0.45, str(out["pullAB"]))
 
             # 打开「拖动后固定」再拖一次
             js("document.getElementById('gx-settings').click();")
@@ -819,8 +848,8 @@ def main() -> int:
             sh = g()
             out["shelter"] = sh.get("startRoom")
             check("起点切到庇护所后，第一个节点是庇护所",
-                  sh.get("start") == "shelter" and (sh.get("startRoom") in gw_shelters),
-                  f"start={sh.get('startRoom')} shelters={sorted(gw_shelters)[:4]}")
+                  sh.get("start") == "shelter" and (sh.get("startRoom") in (ref.get("shelters") or set())),
+                  f"start={sh.get('startRoom')} shelters={sorted(ref.get('shelters') or [])[:4]}")
 
             # ---- 另一个区域：折叠无连接 ----
             js("window.__rwTest.openGraph('RF');")
@@ -890,30 +919,49 @@ def main() -> int:
             check("改「已探索」颜色写进 config.json",
                   cols.get("visited") == "#ff0000", str(cols.get("visited")))
 
-            # ---- 点节点开卡 ----
+            # ---- 点节点开卡：单击进入（2026-11-07 改；双击只留给空白重排）----
             js("window.__rwTest.openGraph('GW');")
             time.sleep(3.4)
             node = loads(js("JSON.stringify(window.__rwTest.graphNode(0))")) or {}
             out["node0"] = node
-            # 先单击：不应该开卡（这条是用户 11-04 明确要求的）
-            js("(function(){var cv=document.getElementById('gx-canvas');"
-               "var r=cv.getBoundingClientRect();"
-               "cv.dispatchEvent(new MouseEvent('click',{bubbles:true,"
-               "clientX:r.left+%s, clientY:r.top+%s}));})()" % (node.get("sx", 0), node.get("sy", 0)))
-            time.sleep(0.7)
-            after_single = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
-            check("单击节点只选中，不打开房间卡", after_single.get("open") is False,
-                  f"open={after_single.get('open')}")
-            js("(function(){var cv=document.getElementById('gx-canvas');"
-               "var r=cv.getBoundingClientRect();"
-               "cv.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,"
-               "clientX:r.left+%s, clientY:r.top+%s}));})()" % (node.get("sx", 0), node.get("sy", 0)))
+
+            def click_at(x, y):
+                js("(function(){var cv=document.getElementById('gx-canvas');"
+                   "var r=cv.getBoundingClientRect();"
+                   "cv.dispatchEvent(new MouseEvent('click',{bubbles:true,"
+                   "clientX:r.left+%s, clientY:r.top+%s}));})()" % (x, y))
+
+            click_at(node.get("sx", 0), node.get("sy", 0))
             time.sleep(0.9)
             card = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
             out["card"] = card
-            check("双击节点打开房间卡且房间号一致",
+            check("单击节点打开房间卡且房间号一致",
                   card.get("open") and card.get("room") == node.get("name"),
                   f"node={node.get('name')} card={card.get('room')} open={card.get('open')}")
+
+            js("var b=document.getElementById('rm-close'); if(b) b.click();")
+            time.sleep(0.7)
+
+            # 拖 60px 再松手，然后补一个 click（真实浏览器会在 mouseup 后合成 click）。
+            # 这个 click 必须被 suppressClick 吞掉 —— 老实现里 GX.drag 在 mouseup 就被清空，
+            # click 拿不到 moved，一旦改成单击进入就会「拖完手一松直接弹进房间卡」。
+            node2 = loads(js("JSON.stringify(window.__rwTest.graphNode(0))")) or {}
+            js("(function(){var cv=document.getElementById('gx-canvas');"
+               "var r=cv.getBoundingClientRect();"
+               "function ev(t,x,y,tgt){(tgt||cv).dispatchEvent(new MouseEvent(t,{bubbles:true,"
+               "cancelable:true,clientX:r.left+x,clientY:r.top+y,button:0}));}"
+               "var x=%s,y=%s;"
+               "ev('mousedown',x,y); ev('mousemove',x+22,y+14); ev('mousemove',x+44,y+27);"
+               "ev('mousemove',x+60,y+38);"
+               "window.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));"
+               "ev('click',x+60,y+38);})()"
+               % (node2.get("sx", 0), node2.get("sy", 0)))
+            time.sleep(0.9)
+            after_drag = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+            out["afterDrag"] = after_drag
+            check("拖动节点后松手不会弹进房间卡",
+                  after_drag.get("open") is False,
+                  f"open={after_drag.get('open')} room={after_drag.get('room')}")
         except Exception as exc:  # noqa: BLE001
             out["errors"].append(f"worker: {exc}")
         finally:

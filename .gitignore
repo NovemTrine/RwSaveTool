@@ -20,6 +20,9 @@ build/_work/
 build/_stage/
 build/_shots/
 build/_test/
+build/_backup/
+build/_clean_region_data/
+build/_release_stage/
 _test/
 *.spec
 
@@ -29,6 +32,7 @@ code_backups/
 
 # ---------- 用户数据与个人配置（含本机路径、存档、模组缓存）----------
 config.json
+config.broken.json
 region_data/
 region_data.bak*/
 sav

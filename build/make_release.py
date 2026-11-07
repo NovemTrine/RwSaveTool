@@ -1,10 +1,17 @@
-"""组装发布包的校验清单与 zip（一次性脚本）。
+"""组装发布包的文本附件、校验清单与 zip。
 
-用法： .venv/Scripts/python.exe build/_make_release.py
+用法： .venv/Scripts/python.exe build/make_release.py
+前置：
+    1. 已把 exe / _internal / region_data 放进 release/RwSaveTool-v<版本>-win64-<日期>/
+    2. 仓库根有 VERSION 与 CHANGELOG.md
+
 产物：
-    release/RwSaveTool-v1.0.0-win64-20261106/校验清单.txt
-    release/RwSaveTool-v1.0.0-win64-20261106.zip
-    release/RwSaveTool-v1.0.0-win64-20261106.zip.md5.txt
+    release/<NAME>/README.txt        由 build/release_assets/README.txt 渲染（填版本与区域数）
+    release/<NAME>/VERSION.txt       版本信息、兼容性、本包内容
+    release/<NAME>/CHANGELOG.md      从仓库根复制
+    release/<NAME>/CHECKSUMS.txt     关键文件 MD5/SHA256 + 完整清单
+    release/<NAME>.zip               整个目录打包
+    release/<NAME>.zip.md5.txt       zip 的 MD5 / SHA256 / 体积
 """
 
 from __future__ import annotations
@@ -12,6 +19,8 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import shutil
+import sys
 import time
 import zipfile
 
@@ -64,10 +73,102 @@ def walk_files(base: str) -> list[tuple[str, int]]:
     return sorted(out)
 
 
+def write_docs() -> int:
+    """把随包的三份文本刷新一遍，返回区域文件数。
+
+    区域数从发布目录里的 region_data 数出来，README 里不再写死数字 ——
+    上次就出现过「文档说 52 个、包里已经变了」的偏差。
+    """
+    region_dir = os.path.join(PKG, "region_data")
+    regions = sorted(n for n in os.listdir(region_dir)
+                     if n.endswith(".json") and not n.startswith("_")) if os.path.isdir(region_dir) else []
+
+    tpl = os.path.join(ROOT, "build", "release_assets", "README.txt")
+    with io.open(tpl, encoding="utf-8") as fh:
+        text = fh.read()
+    text = text.replace("{version}", VERSION).replace("{regions}", str(len(regions)))
+    with io.open(os.path.join(PKG, "README.txt"), "w", encoding="utf-8", newline="\r\n") as fh:
+        fh.write(text)
+
+    ui = os.path.join(PKG, "_internal", "ui", "rw_gui.html")
+    ui_md5 = digest(ui, "md5") if os.path.isfile(ui) else "（未打包）"
+    ui_rel = "_internal/ui/rw_gui.html"
+    core = os.path.join(ROOT, "core", "__init__.py")
+    ver_name, rel_date = VERSION_NAME, RELEASE_DATE
+    if os.path.isfile(core):
+        with io.open(core, encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("__version_name__"):
+                    ver_name = line.split("=", 1)[1].strip().strip('"')
+                elif line.startswith("__release_date__"):
+                    rel_date = line.split("=", 1)[1].strip().strip('"')
+
+    py = "%d.%d.%d" % sys.version_info[:3]
+    lines = [
+        "RwSaveTool · 雨世界存档分析器",
+        "=" * 60,
+        "",
+        "版本号        %s" % VERSION,
+        "版本名称      %s" % ver_name,
+        "发布日期      %s" % rel_date,
+        "构建时间      %s (GMT+8)" % time.strftime("%Y-%m-%d %H:%M"),
+        "构建环境      Windows x64 · Python %s · PyInstaller 6.22.3" % py,
+        "程序形态      目录版（onedir）+ 单文件版（onefile），两者功能完全相同",
+        "界面文件      %s" % ui_rel,
+        "              md5 %s" % ui_md5,
+        "",
+        "【兼容性】",
+        "配置版本      2（core/paths.py CONFIG_VERSION）",
+        "区域数据      schema 4（layers + connections + exits + exitNumbering）",
+        "存档读取      只读；不修改、不写入任何游戏文件",
+        "",
+        "【数据范围】",
+        "内置区域      %d 个，来自游戏本体三个包：" % len(regions),
+        "              游戏原版 / Downpour（倾盆大雨）/ The Watcher（观望者）",
+        "模组数据      不含。使用者在程序里自行导入创意工坊模组后生成",
+        "地图底图      不含。导入游戏本体后底图自动可用",
+        "个人数据      不含。无配置、无存档内容、无导入缓存、无本机路径",
+        "",
+        "【本包内容】",
+        "RwSaveTool.exe              主程序 · 目录版（启动快，推荐日常用；必须与 _internal/ 一起）",
+        "RwSaveTool-onefile.exe      同一程序的单文件版（双击即用，可单独拷到别处）",
+        "_internal/                  目录版的运行库与内置只读资源（请勿删改）",
+        "region_data/                官方区域数据；程序也把导入缓存写在这里",
+        "VERSION.txt                 版本信息（本文件）",
+        "README.txt                  面向使用者的操作说明",
+        "CHANGELOG.md                本版相对上一版的改动清单",
+        "CHECKSUMS.txt               关键文件的 MD5 / SHA256 与完整文件清单",
+        "",
+        "【首次运行】",
+        "两个 exe 任选一个双击即可，功能完全一样，只是打包形态不同：",
+        "  想启动快        → RwSaveTool.exe（整个文件夹别拆开）",
+        "  想一个文件拷走  → RwSaveTool-onefile.exe（启动慢 1~3 秒）",
+        "程序会在同目录生成 config.json，内容全部为默认值（不含任何个人信息）。",
+        "若本目录不可写（例如放在 Program Files），配置会退到",
+        "%APPDATA%\\RwSaveTool\\ 下，不影响使用。",
+        "",
+        "【本版要点】",
+        "· 房间卡新增右侧出口清单：每个管道口的编号与去向，可点击跳转、悬停高亮",
+        "· 修正角色筛选（条件房间按逗号拆分）与完成度分母（补回 DLC / 模组层）",
+        "· 区域拓扑单击节点即进入房间卡，拖动松手不再误触发",
+        "",
+    ]
+    with io.open(os.path.join(PKG, "VERSION.txt"), "w", encoding="utf-8", newline="\r\n") as fh:
+        fh.write("\n".join(lines))
+
+    src = os.path.join(ROOT, "CHANGELOG.md")
+    if os.path.isfile(src):
+        shutil.copyfile(src, os.path.join(PKG, "CHANGELOG.md"))
+    return len(regions)
+
+
 def main() -> int:
     if not os.path.isdir(PKG):
         print("缺少发布目录:", PKG)
         return 1
+
+    regions = write_docs()
+    print("已刷新随包文本（区域 %d 个）" % regions)
 
     files = walk_files(PKG)
     total = sum(size for _n, size in files)
@@ -104,7 +205,7 @@ def main() -> int:
         lines.append("%-34s %-34s %s" % (rel, digest(full, "md5"), digest(full, "sha256")[:32]))
 
     lines.append("")
-    lines.append("【区域数据】（52 个文件，逐个校验）")
+    lines.append("【区域数据】（%d 个文件，逐个校验）" % len(region_files))
     lines.append("-" * 62)
     for rel in region_files:
         full = os.path.join(PKG, rel)

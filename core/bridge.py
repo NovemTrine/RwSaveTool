@@ -322,6 +322,14 @@ class Api:
     def delete_layer(self, code: str, layer_id: str) -> dict:
         return region_store.delete_layer(code, layer_id)
 
+    def preview_source_delete(self, source_id: str) -> dict:
+        """只算不删：这个来源出现在哪些区域 / 多少层 / 多少间房。"""
+        return region_store.preview_source_delete(source_id)
+
+    def delete_source(self, source_id: str, clean_refs: bool = True) -> dict:
+        """跨区域删掉某个来源的全部层，并清掉指向被删房间的引用。"""
+        return region_store.delete_source(source_id, clean_refs)
+
     def set_override(self, code: str, patch: dict) -> dict:
         region_store.set_override(code, patch or {})
         return {"ok": True}

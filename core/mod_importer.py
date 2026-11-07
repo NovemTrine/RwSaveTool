@@ -10,7 +10,14 @@
   world/<REG>/map_<REG>.png         底图（只记录路径，不复制）
   world/<REG>/displayname.txt       区域英文名
   world/<REG>/Properties.txt        子区域列表
+  modify/world/<REG>/…              同一模组对上述文件的「补丁层」，优先级更高
   modinfo.json                      模组 id / 名称 / 版本（容错解析）
+
+关于 modify/（设计文档 §5.5）：
+  游戏的加载顺序是 `world/` → `modify/world/`，后者按房间/文件逐个覆盖前者。
+  实例：`moreslugcats` 没有 `world/sl/`，SL 的 DLC 改动**只**写在
+  `modify/world/sl/world_sl.txt`（43 间）里 —— 不读 modify 就整段丢失。
+  因此 modify 不是一个独立来源，而是**同一层的补丁**：本模块把它合并进该模组的层。
 """
 
 from __future__ import annotations
@@ -19,6 +26,8 @@ import json
 import os
 import re
 from typing import Any, Callable
+
+from . import room_geo
 
 REGION_DIR_RE = re.compile(r"^[A-Za-z0-9]{2,8}$")
 ROOM_LINE_RE = re.compile(r"^\s*(?:\{[^}]*\})?\s*([A-Za-z0-9_]+)\s*:\s*(.*)$")
@@ -51,7 +60,13 @@ def _fingerprint(path: str) -> dict | None:
         stat = os.stat(path)
     except OSError:
         return None
-    return {"name": os.path.basename(path), "size": stat.st_size, "mtime": int(stat.st_mtime)}
+    # dir 让 region_store 在「基准目录 + modify 目录」混读时仍能逐个复查（schema 4 起）
+    return {
+        "name": os.path.basename(path),
+        "dir": os.path.dirname(path),
+        "size": stat.st_size,
+        "mtime": int(stat.st_mtime),
+    }
 
 
 def _file_map(directory: str) -> dict[str, str]:
@@ -104,7 +119,17 @@ def parse_modinfo(path: str) -> dict:
 # 各文件解析
 # --------------------------------------------------------------------------
 def parse_world_file(text: str) -> dict[str, dict]:
-    """解析 world_*.txt 的 ROOMS 段 → {房间名大写: {neighbors, flags}}。"""
+    """解析 world_*.txt 的 ROOMS 段 → {房间名大写: {neighbors, connections, flags}}。
+
+    `neighbors` 与 `connections` 的区别（schema 3 起）：
+      neighbors   —— 去重后的邻接房间名，界面的拓扑/完成度一直只用它；
+      connections —— **保序、不去重**，`DISCONNECTED` 占位保留为 None。
+                     它对应「房间文件里第 i 个出口（objects 里 type==4）」，
+                     供"某个管道口连到哪个房间"用（设计文档 P1）。
+                     例：`GATE_DS_GW : GW_S05, DISCONNECTED, GW_B09`
+                     → connections = ["GW_S05", None, "GW_B09"]，neighbors = ["GW_B09", "GW_S05"]（排序后）
+    两者恒有关系：`{c for c in connections if c}` 与 `neighbors` 的集合相等。
+    """
     rooms: dict[str, dict] = {}
     in_rooms = False
     for raw_line in text.splitlines():
@@ -129,23 +154,37 @@ def parse_world_file(text: str) -> dict[str, dict]:
         if not name:
             continue
         chunks = [chunk.strip() for chunk in rest.split(":")]
-        neighbors = []
+        connections: list[str | None] = []
         if chunks and chunks[0]:
-            neighbors = [
-                token.strip()
-                for token in chunks[0].split(",")
-                if token.strip() and token.strip() != "DISCONNECTED"
-            ]
+            for token in chunks[0].split(","):
+                token = token.strip()
+                if not token:
+                    continue
+                # 空位必须留占位，否则后面的出口会整体前移一位
+                connections.append(None if token.upper() == "DISCONNECTED" else token.upper())
+        neighbors = [c for c in connections if c]
         flags = set()
         if len(chunks) > 1 and chunks[1]:
             flags = {token.strip().upper() for token in chunks[1].split(",") if token.strip()}
         key = name.upper()
-        record = rooms.setdefault(key, {"neighbors": [], "flags": set()})
+        record = rooms.setdefault(
+            key, {"neighbors": [], "connections": [], "flags": set(), "_connsSet": False}
+        )
+        # 一个房间可能出现多行：`{Saint}ROOM : …` / `{#!SBCameraScroll,TM}ROOM : …` 这类
+        # 带花括号前缀的**条件行**。条件是否成立本工具无法判定，而 connections 是**按位置**
+        # 对应出口的，累加会让槽位数翻倍（实测 AB_DT04 变成 5 出口 / 10 槽）。
+        # 因此 connections 只认**文件里第一行**，neighbors / flags 仍然并集（保持旧行为）。
+        if not record["_connsSet"]:
+            record["connections"] = list(connections)
+            record["_connsSet"] = True
         for neighbor in neighbors:
-            if neighbor.upper() not in {n.upper() for n in record["neighbors"]}:
-                record["neighbors"].append(neighbor.upper())
+            if neighbor not in record["neighbors"]:
+                record["neighbors"].append(neighbor)
         record["flags"] |= flags
+    for record in rooms.values():
+        record.pop("_connsSet", None)
     return rooms
+
 
 
 def parse_conditional(text: str) -> dict[str, dict]:
@@ -156,6 +195,14 @@ def parse_conditional(text: str) -> dict[str, dict]:
 
     角色名可能带剧情条件前缀（Watcher 的 `{!PostBathScene}Watcher`）——这类无法静态
     判定，只标 story=True，不参与分母筛选，免得把可能存在的房间算掉。
+
+    **一个条件名可以是逗号分隔的一组角色**（游戏里写作 `Artificer,Spear : EXCLUSIVEROOM : GW_TOWER01`，
+    语义是「其中任一角色」）。早期实现把整串 `ARTIFICER,SPEAR` 当成一个角色名存下来，
+    前端 `exclusive.some(n => mine[n])` 永远匹配不上，于是：
+      - `EXCLUSIVEROOM: Artificer,Spear` 的房间对这两个角色本该保留，却被剔除；
+      - `HIDEROOM: Artificer,Spear` 的房间本该剔除，却被保留。
+    实测 GW 在 Artificer 战役下因此只算出 58 间（应为 99 间），TOWER/PIPE/EDGE 系列全丢。
+    所以这里必须按 `,` / `;` 拆开，逐个存入。
     """
     out: dict[str, dict] = {}
     in_block = False
@@ -176,14 +223,21 @@ def parse_conditional(text: str) -> dict[str, dict]:
             continue
         actor, kind, room = match.group(1).strip(), match.group(2).upper(), match.group(3)
         story = "{" in actor
-        name = re.sub(r"\{[^}]*\}", "", actor).strip().upper()
         room = room.strip().upper()
-        if not name or not room:
+        if not room:
+            continue
+        names: list[str] = []
+        for part in re.split(r"[,;]", actor):
+            name = re.sub(r"\{[^}]*\}", "", part).strip().upper()
+            if name and name not in names:
+                names.append(name)
+        if not names:
             continue
         entry = out.setdefault(room, {"exclusive": [], "hidden": [], "story": False})
         bucket = "exclusive" if kind == "EXCLUSIVEROOM" else "hidden"
-        if name not in entry[bucket]:
-            entry[bucket].append(name)
+        for name in names:
+            if name not in entry[bucket]:
+                entry[bucket].append(name)
         if story:
             entry["story"] = True
     return out
@@ -311,15 +365,78 @@ def _region_dirs(mod_root: str) -> dict[str, str]:
     return _region_dirs_raw(os.path.join(mod_root, "world"))
 
 
+def scan_region_dirs(base_world: str | None, modify_world: str | None) -> dict[str, dict]:
+    """一次扫描「基准 world + modify/world」，返回 {区域代码: {base, override}}。
+
+    override 是同名区域在 `modify/world/` 下的补丁目录（可能不存在）。
+    游戏加载顺序为 base → override，出冲突时 override 优先。
+    """
+    out: dict[str, dict] = {}
+    for code, directory in _region_dirs_raw(base_world or "").items():
+        out[code] = {"base": directory, "override": None}
+    for code, directory in _region_dirs_raw(modify_world or "").items():
+        slot = out.setdefault(code, {"base": None, "override": None})
+        slot["override"] = directory
+    return out
+
+
+def modify_world_dir(mod_root: str) -> str:
+    """`<模组根>/modify/world`。"""
+    return os.path.join(mod_root, "modify", "world")
+
+
 # --------------------------------------------------------------------------
 # 单区域导入
 # --------------------------------------------------------------------------
-def _import_region(code: str, region_dir: str) -> tuple[dict | None, list[str]]:
+def _import_region(
+    code: str,
+    region_dir: str | None,
+    override_dir: str | None = None,
+    fallback_dir: str | None = None,
+) -> tuple[dict | None, list[str]]:
     warnings: list[str] = []
-    files = _file_map(region_dir)
     lower_code = code.lower()
+    # 基底三明治：fallback（游戏原版）垫底 → 包自己的 world/ 覆盖 → modify/ 再覆盖。
+    # 为什么要 fallback：DLC 的 world/<reg> 目录经常只放地图与 displayname，
+    # 真正完整的 world_<reg>.txt 仍留在游戏原版里。不回退就会把整层判成
+    # 「没有完整定义」→ 被当成仅地图 → 不进分母（实测 CC 44 vs 61、GW 85 vs 136）。
+    # 注意这只补「缺什么」，包自己写了的一律优先，不会把原版数据盖回去。
+    base_files: dict[str, str] = {}
+    if fallback_dir:
+        base_files.update(_file_map(fallback_dir))
+    if region_dir:
+        base_files.update(_file_map(region_dir))
+    ovr_files = _file_map(override_dir) if override_dir else {}
 
-    world_file = _pick(files, f"world_{lower_code}.txt", f"world_{code}.txt")
+    # 「这个包到底碰没碰过这个区域」必须只看它自己（world/ + modify/），不能把
+    # fallback 算进来：原版基底是给「有改动但没写全」的包补缺的，不是给
+    # 只放了个 vistas.txt 的包（如 expedition）凭空造出一份原版副本。
+    own_files: dict[str, str] = {}
+    if region_dir:
+        own_files.update(_file_map(region_dir))
+    own_files.update(ovr_files)
+    own_has_world = bool(_pick(own_files, f"world_{lower_code}.txt", f"world_{code}.txt"))
+    own_has_map = any(name.startswith(f"map_image_{lower_code}") for name in own_files)
+    if not own_has_world and not own_has_map:
+        # 正常跳过（包里有该区域的目录但只放了 vistas/properties 之类），
+        # 不当警告报，否则会把真正的告警挤掉。
+        return None, []
+    # 文件级叠加：同名文件 modify 优先（底图 / 坐标 / 名称 / Properties 都按这个规矩）
+    files = dict(base_files)
+    files.update(ovr_files)
+
+    base_world = _pick(base_files, f"world_{lower_code}.txt", f"world_{code}.txt")
+    ovr_world = _pick(ovr_files, f"world_{lower_code}.txt", f"world_{code}.txt")
+    # 两个不同的问法，别混用：
+    #   has_world      —— 这一层有没有 **world 依据**（完整定义或 modify 补丁都算）。
+    #                     有依据 = 房间清单来自 world 文件而不是地图矩形，可以用作分母。
+    #                     modify 补丁虽然只列改动过的房间，但它解析出的房间是真实的，
+    #                     与 base 层做并集正好补齐「原版 + 模组新增」。
+    #   has_full_world —— 这一层有没有 **完整定义**（只看基底）。补丁层为 False，
+    #                     用来告诉界面「这是个补丁层」，不影响能不能进分母。
+    has_world = bool(base_world or ovr_world)
+    has_full_world = bool(base_world)
+    world_file = ovr_world or base_world
     props_file = _pick(files, "properties.txt")
     name_file = _pick(files, "displayname.txt")
 
@@ -332,20 +449,21 @@ def _import_region(code: str, region_dir: str) -> tuple[dict | None, list[str]]:
         suffix = suffix.lstrip("-_")
         variants[suffix or "normal"] = real_path
 
-    if not variants and not world_file:
-        return None, [f"{code}: 找不到 world_{lower_code}.txt 或 map_image_*.txt，跳过"]
-
-    # 基础房间表
+    # 基础房间表（modify 里同名的房间条目**整条覆盖**基准条目，与游戏加载顺序一致）
     rooms: dict[str, dict] = {}
-    if world_file:
-        rooms = parse_world_file(_read_text(world_file))
-    else:
-        warnings.append(f"{code}: 无 world 文件，只有地图数据（无连接与庇护所标记）")
+    if base_world:
+        rooms = parse_world_file(_read_text(base_world))
+    if ovr_world:
+        rooms.update(parse_world_file(_read_text(ovr_world)))
+    if not has_world:
+        warnings.append(f"{code}: 无 world 文件，房间表来自地图矩形（仅地图层）")
 
     # 条件房间（只对某个角色存在 / 对某个角色隐藏）
     conditional: dict[str, dict] = {}
-    if world_file:
-        conditional = parse_conditional(_read_text(world_file))
+    if base_world:
+        conditional = parse_conditional(_read_text(base_world))
+    if ovr_world:
+        conditional.update(parse_conditional(_read_text(ovr_world)))
 
     # 坐标表（子区域 / 世界坐标），非必需
     coord_file = None
@@ -371,7 +489,7 @@ def _import_region(code: str, region_dir: str) -> tuple[dict | None, list[str]]:
 
     room_list = []
     for name in sorted(names):
-        info = rooms.get(name, {"neighbors": [], "flags": set()})
+        info = rooms.get(name, {"neighbors": [], "connections": [], "flags": set()})
         flags = info.get("flags") or set()
         coord = coords.get(name) or {}
         entry = {
@@ -385,6 +503,11 @@ def _import_region(code: str, region_dir: str) -> tuple[dict | None, list[str]]:
                 dict(zip(("x", "y", "w", "h"), normal_map[name])) if name in normal_map else None
             ),
         }
+        # 保序出口表：只在有 world 文件时存在。缺了它不代表数据坏，
+        # 只代表"这间房没有世界文件依据"（仅地图导入的房间），消费方必须能降级。
+        conns = info.get("connections") or []
+        if conns:
+            entry["connections"] = list(conns)
         if coord.get("world"):
             entry["world"] = coord["world"]
         cond = conditional.get(name)
@@ -397,6 +520,10 @@ def _import_region(code: str, region_dir: str) -> tuple[dict | None, list[str]]:
                 # 带剧情条件的房间：不参与分母筛选，只在界面上标注
                 entry["conditional"] = True
         room_list.append(entry)
+
+    # 有定义文件但一间房都没解析出来：不落空层，免得又攒出一批「0 房间旧壳」
+    if not room_list:
+        return None, [f"{code}: 有定义文件但没解析出房间，跳过"]
 
     # 变体（圣徒等）：只存房间名集合 + 矩形
     variant_out: dict[str, dict] = {}
@@ -428,10 +555,12 @@ def _import_region(code: str, region_dir: str) -> tuple[dict | None, list[str]]:
     # 诊断：房间级文件里未被登记的房间（不进入分母，仅提示）
     ghost = _count_unlisted_room_files(files, names)
 
-    read_files = [world_file, coord_file, name_file, props_file] + list(variants.values())
+    read_files = [base_world, ovr_world, coord_file, name_file, props_file] + list(variants.values())
     fingerprint = [fp for fp in (_fingerprint(p) for p in read_files if p) if fp]
 
     region = {
+        # 这里是"单层"中间结构（会被 region_store 包装成 layers[i] 并按 SCHEMA 落盘），
+        # 所以 schema 字段只作溯源标记，不代表最终文件版本。
         "schema": 1,
         "code": code,
         "displayName": display_name,
@@ -450,18 +579,24 @@ def _import_region(code: str, region_dir: str) -> tuple[dict | None, list[str]]:
             "subregions": len(subregions),
             "unlistedRoomFiles": ghost,
             "hasCoordinates": bool(normal_map),
-            "hasWorldFile": bool(world_file),
+            # 有 world 依据（完整定义或 modify 补丁）→ 房间清单可作分母
+            "hasWorldFile": has_world,
+            # 有完整定义（只看基底）→ False 表示这是一层补丁
+            "hasFullWorld": has_full_world,
             # 条件房间：只对某角色存在（EXCLUSIVEROOM）/ 对某角色隐藏（HIDEROOM）
             "conditionalRooms": len(conditional),
             "storyConditionalRooms": sum(1 for c in conditional.values() if c.get("story")),
-            # partial = 该区域是「对基础区域的覆盖」，没有完整房间清单。
-            # 这类区域的 rooms 只是模组改动过的房间，绝不能当完成度分母。
-            "partial": not bool(world_file),
+            # partial 与 mapOnly 同义：房间表来自地图矩形，不能用它算完成度分母
+            "partial": not has_world,
         },
         "subregions": subregions,
         "source": {
             "kind": "local_mod",
-            "path": region_dir,
+            "path": region_dir or fallback_dir or override_dir,
+            # 基底兜底目录（通常是游戏原版 world/<reg>）：只在包自己缺文件时生效
+            "fallbackDir": fallback_dir,
+            # modify 补丁目录：读取优先级高于 path，room_geo 会先查它的 -rooms/gates
+            "overridePaths": [override_dir] if override_dir else [],
             "files": fingerprint,
         },
     }
@@ -524,6 +659,169 @@ def count_unlisted_room_files(mod_root: str, code: str, listed: set[str]) -> int
 
 
 # --------------------------------------------------------------------------
+# 出口编号（设计文档 P1 / §5.4）
+# --------------------------------------------------------------------------
+def region_room_dirs(world_dirs: list[str | None], code: str) -> list[str]:
+    """该区域的房间文件目录，按优先级排列（已过滤不存在的）。
+
+    为什么不能只看区域目录：模组的房间文件常在 `<mod>/world/DS-rooms/`，而它的
+    区域定义却在 `<mod>/modify/world/DS/` —— 两者是兄弟目录关系但分处 modify 两侧。
+    所以这里按「world 根」逐个拼 `<code>-rooms`。
+    """
+    out: list[str] = []
+    lower = code.lower()
+    for world in world_dirs:
+        if not world:
+            continue
+        for name in (f"{lower}-rooms", f"{code}-rooms"):
+            candidate = os.path.join(world, name)
+            if os.path.isdir(candidate):
+                real = os.path.normcase(candidate)
+                if all(os.path.normcase(d) != real for d in out):
+                    out.append(candidate)
+                break
+    return out
+
+
+def room_dirs(region_dir: str | None, override_dir: str | None) -> list[str]:
+    """兼容旧调用：由区域目录推导房间目录（补丁目录在前）。"""
+    out: list[str] = []
+    for directory in (override_dir, region_dir):
+        if directory:
+            out.append(directory)
+    return out
+
+
+def _exit_marks(dirs: list[str], room: str) -> list[tuple[int, int]] | None:
+    """读房间文件，返回按「行优先 `(y, x)`」排好序的出口格坐标。
+
+    返回 None = 一个候选文件都没找到；返回 [] = 文件在但里面没有出口格。
+    """
+    if not dirs:
+        return None
+    # 借用 room_geo 的查找顺序（含门房间的 gate_a_b / gate_b_a 两种命名）。
+    # 注意每层都必须带 id：room_geo._layer_dirs 在 layer_id=None 时会跳过没有 id 的层。
+    fake = {
+        "layers": [
+            {"id": f"_exit_{index}", "source": {"roomsDirs": [directory]}}
+            for index, directory in enumerate(dirs)
+        ]
+    }
+    for path in room_geo.candidates(fake, room):
+        if not os.path.isfile(path):
+            continue
+        try:
+            data = room_geo.load(path)
+        except Exception:  # noqa: BLE001 - 房间文件坏掉只应影响这一间
+            return None
+        marks = [
+            (int(mark[0]), int(mark[1]))
+            for mark in data.get("marks") or []
+            if mark[2] == room_geo.MARK_EXIT
+        ]
+        # 行优先：先按 y 分行（严格相等），行内按 x 从左到右 —— 不用容差（§8）
+        marks.sort(key=lambda pair: (pair[1], pair[0]))
+        return marks
+    return None
+
+
+def _trim_padding(slots: list, marks_len: int) -> list:
+    """剪掉**超出出口数**的尾部空位（作者写的纯填充）。
+
+    只剪「比出口多出来的那部分」，因为出口数之内的 DISCONNECTED 是有意义的：
+    它占一个号、表示那个口没接房间（§5.1）。实测 FW_A14 写满 12 个槽位，
+    房间只有 5 个出口，后 7 个全是填充。
+    """
+    end = len(slots)
+    while end > marks_len and slots[end - 1] is None:
+        end -= 1
+    return list(slots[:end])
+
+
+def attach_exits(regions: list[dict], dirs_list: list[list[str]]) -> dict:
+    """给每个房间算 `exits[]`（出口编号 + 通向哪间房），原地写入。
+
+    编号规则（§5.4 方案 A）：
+      编号 = 出口按 `(y, x)` 排序后的下标，**全覆盖**；
+      `to` 只给前 `k = min(出口数, 连接数)` 个，多出的（必在尾部）`to = None`。
+
+    门房间（§6）：连接是**跨区域**的一张表，每个区域只填自己那侧的槽位，
+    所以先把同一层里同名门房间的槽位逐槽合并，再拿去配对。
+    """
+    conflicts: set[str] = set()
+    gate_slots: dict[str, list] = {}
+    for region, _dirs in zip(regions, dirs_list):
+        for room in region.get("rooms") or []:
+            if not room.get("gate"):
+                continue
+            conns = room.get("connections") or []
+            if not conns:
+                continue
+            # 门房间**跨区域也跨包**：一个门的两侧可能分别由原版和某个包定义（GATE_GW_SH 的
+            # 第三槽就在 CL 区，属 Downpour 层），所以按房间名全局合并，不按层分组。
+            key = str(room.get("name", "")).upper()
+            slots = gate_slots.setdefault(key, [])
+            for index, conn in enumerate(conns):
+                if index >= len(slots):
+                    slots.append(conn)
+                elif conn is not None:
+                    if slots[index] is None:
+                        slots[index] = conn
+                    elif slots[index] != conn:
+                        conflicts.add(key)  # 两侧对同一槽位给了不同房间：不猜，标 truncated
+
+    stats = {"rooms": 0, "withExits": 0, "ok": 0, "truncated": 0, "noFile": 0, "conflict": 0}
+    for region, dirs in zip(regions, dirs_list):
+        layer_id = (region.get("layer") or {}).get("id")
+        for room in region.get("rooms") or []:
+            conns = room.get("connections") or []
+            if not conns:
+                continue
+            stats["rooms"] += 1
+            name = str(room.get("name", "")).upper()
+            key = name if room.get("gate") else f"{layer_id}/{name}"
+            slots = (gate_slots.get(name) if room.get("gate") else None) or conns
+            if room.get("gate") and slots is not conns and len(slots) >= len(conns):
+                # 门房间：把跨区域合并后的完整槽位表落盘（各区域看到同一张表，与游戏一致）
+                room["connections"] = list(slots)
+            marks = _exit_marks(dirs, room.get("name"))
+            if not marks:
+                stats["noFile"] += 1
+                continue
+            # 门房间不剪：它的空白槽位属于「另一个区域的那一侧」，语义上真实存在。
+            effective = slots if room.get("gate") else _trim_padding(slots, len(marks))
+            limit = min(len(marks), len(effective))
+            room["exits"] = [
+                {"x": x, "y": y, "to": effective[index] if index < limit else None}
+                for index, (x, y) in enumerate(marks)
+            ]
+            complete = len(marks) == len(effective)
+            room["exitNumbering"] = "ok" if complete else "truncated"
+            # 冲突 = 同一个门的同一个槽位，被两个来源写成了不同房间（通常是模组重定义
+            # 了原版的门）。槽位数仍然够、编号仍然可用，所以只标一个诊断位，不降级。
+            if key in conflicts:
+                room["exitConflict"] = True
+            stats["withExits"] += 1
+
+    # 收尾统一一遍：门房间的槽位表可能在上面的循环里被后来的区域改长（跨区域合并是
+    # 全局的），逐房间算出来的 complete 会和最终落盘的数据对不上。这里以**最终数据**
+    # 为准重算一次，保证「标 ok 的房间，其 exits 与 connections 条数一定相等」。
+    for region in regions:
+        for room in region.get("rooms") or []:
+            exits = room.get("exits")
+            if not exits:
+                continue
+            conns = room.get("connections") or []
+            effective = conns if room.get("gate") else _trim_padding(conns, len(exits))
+            complete = len(exits) == len(effective)
+            room["exitNumbering"] = "ok" if complete else "truncated"
+            stats["ok" if complete else "truncated"] += 1
+            if room.get("exitConflict"):
+                stats["conflict"] += 1
+    return stats
+
+
+# --------------------------------------------------------------------------
 # 模组级导入
 # --------------------------------------------------------------------------
 def import_mod(
@@ -553,6 +851,7 @@ def import_mod(
     report("扫描模组", 5, f"{len(roots)} 个模组")
 
     regions: list[dict] = []
+    region_dirs: list[list[str]] = []
     warnings: list[str] = []
     mods: list[dict] = []
 
@@ -566,12 +865,15 @@ def import_mod(
             "tolerantParsed": bool(modinfo.get("_tolerant")),
         }
         mods.append(mod_entry)
-        dirs = _region_dirs(root)
+        # world/ 与 modify/world/ 一起扫；后者是该模组对区域的补丁（游戏加载顺序 base → modify）
+        world_base = os.path.join(root, "world")
+        world_modify = modify_world_dir(root)
+        dirs = scan_region_dirs(world_base, world_modify)
         report("读取模组", 10 + int(70 * index / max(1, len(roots))), mod_entry["name"])
 
-        for code, region_dir in dirs.items():
+        for code, slot in dirs.items():
             try:
-                region, notes = _import_region(code, region_dir)
+                region, notes = _import_region(code, slot["base"], slot["override"])
             except Exception as exc:  # 单区域失败不影响其它区域
                 warnings.append(f"{code}: 导入异常 {type(exc).__name__}: {exc}")
                 continue
@@ -603,17 +905,29 @@ def import_mod(
                     )
             except OSError:
                 pass
+            rooms_search = region_room_dirs([world_modify, world_base], code)
+            region["source"]["roomsDirs"] = rooms_search
+            # 门房间住在 <world>/gates/，与 -rooms 是兄弟目录；这里把 world 根也记下来
+            region["source"]["worldDirs"] = [
+                d for d in (world_modify, world_base) if os.path.isdir(d)
+            ]
             regions.append(region)
+            region_dirs.append(rooms_search)
             mod_entry.setdefault("regions", []).append(
                 {"code": code, "rooms": region["stats"]["rooms"]}
             )
 
     report("整理结果", 95, f"{len(regions)} 个区域")
-    regions.sort(key=lambda r: r["code"])
+    # 出口编号：必须在所有区域收集完之后做（门房间要跨区域合并槽位）
+    exit_stats = attach_exits(regions, region_dirs)
+    order = sorted(range(len(regions)), key=lambda i: regions[i]["code"])
+    regions = [regions[i] for i in order]
+    region_dirs = [region_dirs[i] for i in order]
     return {
         "ok": True,
         "mods": mods,
         "regions": regions,
         "warnings": warnings,
         "multi": info["kind"] == "multi",
+        "exitStats": exit_stats,
     }

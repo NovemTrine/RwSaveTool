@@ -2,9 +2,12 @@
 
 写入目标：paths.data_dir() 下的 <CODE>.json
 
-数据结构（schema 2）：一个区域 = 多条「来源层」
+数据结构（schema 3）：一个区域 = 多条「来源层」
     layers[0]  基础层：官方文件（原版 / DLC），没有官方文件时就是模组自己的完整定义
     layers[1:] 附加层：模组对该区域追加/覆盖的房间（典型是 GATE_RF_GW 这种连接房间）
+
+schema 3 相对 2 只多一个字段：rooms[].connections（保序出口表，含 None 空位），
+仅对"有 world 文件依据"的房间存在。旧文件没有它也能读。
 
 为什么要分层（2026-10-31 修订）：
     模组可以给原版区域的地图**添加**房间，用来把原版区域和模组区域连起来。
@@ -30,7 +33,15 @@ from typing import Any
 from . import paths, sources
 
 OVERRIDES_FILE = "_overrides.json"
-SCHEMA = 2
+# 区域数据 schema：
+#   1 = 单层（rooms 直接在顶层）
+#   2 = layers 数组（多来源叠加）
+#   3 = 在 2 之上加「保序出口表」rooms[].connections（含 DISCONNECTED 空位 None）
+#   4 = 在 3 之上加「出口编号」rooms[].exits（[{x,y,to}]）+ rooms[].exitNumbering
+#       （"ok" | "truncated"），并让 source 记录 modify 补丁目录（source.overridePaths）
+# 注意 3/4 都是**纯增字段**：旧文件没有 connections/exits 也能读，但**不要**用 neighbors
+# 反推顺序 —— neighbors 在写入时已排序、且去过重，反推会把错编号写进用户数据（P0/P0.5）。
+SCHEMA = 4
 
 
 def _region_path(code: str) -> str:
@@ -154,7 +165,7 @@ def _layer_from_v1(data: dict) -> dict:
 
 
 def _normalize(data: dict) -> dict:
-    """把任意版本的记录统一成 schema 2。"""
+    """把任意版本的记录统一成 schema 3（v1 单层 → v2 layers → v3 保序出口表）。"""
     if not isinstance(data, dict):
         return {}
     data = dict(data)
@@ -167,6 +178,17 @@ def _normalize(data: dict) -> dict:
         data.pop("source", None)
     data["layers"] = layers
     data["schema"] = SCHEMA
+    # v3 的 rooms[].connections：只做类型规整（大写 + None 占位），
+    # 缺失就让它继续缺失 —— 绝不拿 neighbors 兜底伪造顺序。
+    for layer in layers:
+        for room in (layer.get("rooms") or ()):
+            if not isinstance(room, dict) or "connections" not in room:
+                continue
+            conns = room.get("connections")
+            if not isinstance(conns, list):
+                room.pop("connections", None)
+                continue
+            room["connections"] = [(str(c).upper() if c else None) for c in conns]
     # 排序：official 在前，其余按 order / id
     data["layers"].sort(key=lambda l: (0 if l.get("kind") == "official" else 1,
                                        int(l.get("order") or 0), str(l.get("id") or "")))
@@ -183,7 +205,8 @@ def _check_drift(layer: dict) -> list[str]:
         return []
     drift: list[str] = []
     for item in source.get("files") or []:
-        candidate = os.path.join(region_dir, item.get("name", ""))
+        # schema 4 起每项自带 dir（基准目录与 modify 目录可能混读）
+        candidate = os.path.join(item.get("dir") or region_dir, item.get("name", ""))
         try:
             stat = os.stat(candidate)
             if stat.st_size != item.get("size") or int(stat.st_mtime) != item.get("mtime"):
@@ -485,6 +508,185 @@ def delete_layer(code: str, layer_id: str) -> dict:
     record["layers"] = remaining
     _write_json(_region_path(code), _normalize(record))
     return {"ok": True, "code": code, "layer": layer_id}
+
+
+# --------------------------------------------------------------------------
+# 按来源删除（S3）
+#
+# 模组的数据是按「区域」存的：SB.json 里躺着 14 个不同来源的层。所以「删掉某个模组」
+# 不能只删一个文件 —— District4B 实测分布在 35 个层里，只删 SB 那一层，地图上到处
+# 都还留着 SB_4B 这种残影。
+#
+# 匹配口径：前端传的是注册表 id（`mod:District4B`），层里的 source.modId 是裸的
+# `District4B`，两种都认；`official:base` 这类没有 modId，直接比 layer.id。
+# --------------------------------------------------------------------------
+
+def _layer_source_id(layer: dict) -> str:
+    src = layer.get("source") or {}
+    mod_id = str(src.get("modId") or "").strip()
+    return mod_id
+
+
+def _source_match(layer: dict, source_id: str) -> bool:
+    sid = str(source_id or "").strip()
+    if not sid:
+        return False
+    lid = str(layer.get("id") or "").strip()
+    if lid and lid.lower() == sid.lower():
+        return True
+    mod_id = _layer_source_id(layer)
+    if not mod_id:
+        return False
+    bare = sid.split(":", 1)[-1]
+    return mod_id.lower() in {sid.lower(), bare.lower()}
+
+
+def _plan_source_delete(source_id: str) -> dict:
+    """只算不删：这个来源出现在哪些区域 / 哪些层 / 多少间房，删完哪些区域会变空。"""
+    hits: list[dict] = []
+    layer_count = 0
+    room_count = 0
+    empty_after: list[str] = []
+    for code, region in all_regions().items():
+        layers = region.get("layers") or []
+        mine = [l for l in layers if _source_match(l, source_id)]
+        if not mine:
+            continue
+        rooms = [str((r or {}).get("name") or "").upper()
+                 for l in mine for r in (l.get("rooms") or [])]
+        hits.append({
+            "code": code,
+            "layers": [l.get("id") for l in mine],
+            "layerNames": [l.get("label") or l.get("id") for l in mine],
+            "rooms": len([r for r in rooms if r]),
+            "roomNames": [r for r in rooms if r],
+        })
+        layer_count += len(mine)
+        room_count += len([r for r in rooms if r])
+        if len(mine) == len(layers):
+            empty_after.append(code)
+    return {
+        "sourceId": source_id,
+        "regions": hits,
+        "layerCount": layer_count,
+        "roomCount": room_count,
+        "emptyRegions": sorted(empty_after),
+    }
+
+
+def preview_source_delete(source_id: str) -> dict:
+    plan = _plan_source_delete(source_id)
+    if not plan["layerCount"]:
+        return {"ok": False, "error": "没有找到这个来源的数据", **plan}
+    return {"ok": True, **plan}
+
+
+def delete_source(source_id: str, clean_refs: bool = True) -> dict:
+    """删掉某个来源在**所有区域**里的层，并清掉指向「被删房间」的引用。
+
+    引用清理只针对「删完之后全库都不存在的房间名」（`removed`），不是「所有解析不到
+    目标的引用」—— 后者会在「只导入了一部分模组」时误伤：SB 里指向 GW 的连接本来
+    合法，只是 GW 还没导入，一扫就删干净了，补导也回不来。
+
+    `_sources.json` 里的注册项**保留**（主人 20:17 拍板）：重导时若模组目录还在，
+    它会自己回来；想彻底消失要手动清注册项。
+    """
+    plan = _plan_source_delete(source_id)
+    if not plan["layerCount"]:
+        return {"ok": False, "error": "没有找到这个来源的数据", **plan}
+
+    regions = all_regions()
+    # 删完之后还剩哪些房间（跨区域全局判断，避免误删别的来源也定义了的同名房间）
+    remaining: set[str] = set()
+    for code, region in regions.items():
+        for layer in region.get("layers") or []:
+            if _source_match(layer, source_id):
+                continue
+            for room in layer.get("rooms") or []:
+                name = str((room or {}).get("name") or "").upper()
+                if name:
+                    remaining.add(name)
+
+    removed: set[str] = set()
+    for code, region in regions.items():
+        for layer in region.get("layers") or []:
+            if not _source_match(layer, source_id):
+                continue
+            for room in layer.get("rooms") or []:
+                name = str((room or {}).get("name") or "").upper()
+                if name and name not in remaining:
+                    removed.add(name)
+
+    written = 0
+    dropped_regions: list[str] = []
+    refs = 0
+    for code, region in regions.items():
+        layers = region.get("layers") or []
+        keep = [l for l in layers if not _source_match(l, source_id)]
+        if len(keep) == len(layers):
+            continue
+        if not keep:
+            path = _region_path(code)
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+            except OSError:
+                pass
+            dropped_regions.append(code)
+            continue
+        if clean_refs and removed:
+            for layer in keep:
+                refs += _strip_refs(layer, removed)
+        region["layers"] = keep
+        _write_json(_region_path(code), _normalize(region))
+        written += 1
+
+    return {
+        "ok": True,
+        "sourceId": source_id,
+        "layers": plan["layerCount"],
+        "rooms": plan["roomCount"],
+        "regions": written,
+        "droppedRegions": dropped_regions,
+        "refs": refs,
+        "removedRooms": len(removed),
+    }
+
+
+def _strip_refs(layer: dict, removed: set[str]) -> int:
+    """把这一层里指向 removed 的邻居 / 连接 / 出口去向清掉。
+
+    `connections` 里 None 是 DISCONNECTED 的占位（出口编号要留），只删字符串命中项；
+    `exits[].to` 置 None 而不是删元素，编号位置必须保留。
+    """
+    n = 0
+    for room in layer.get("rooms") or []:
+        if not isinstance(room, dict):
+            continue
+        nb = room.get("neighbors")
+        if isinstance(nb, list):
+            kept = [x for x in nb if str(x).upper() not in removed]
+            n += len(nb) - len(kept)
+            room["neighbors"] = kept
+        conn = room.get("connections")
+        if isinstance(conn, list):
+            kept = []
+            for x in conn:
+                if x is None:
+                    kept.append(None)
+                elif str(x).upper() in removed:
+                    n += 1
+                else:
+                    kept.append(x)
+            room["connections"] = kept
+        for ex in room.get("exits") or []:
+            if not isinstance(ex, dict):
+                continue
+            to = ex.get("to")
+            if to is not None and str(to).upper() in removed:
+                ex["to"] = None
+                n += 1
+    return n
 
 
 # --------------------------------------------------------------------------

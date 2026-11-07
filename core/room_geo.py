@@ -56,9 +56,34 @@ def _layer_dirs(region: dict, layer_id: str | None = None) -> list[str]:
     ordered.extend([l for l in layers if l.get("id") != layer_id])
     for layer in ordered:
         src = layer.get("source") or {}
-        d = rooms_dir_of(src.get("path"))
-        if d and d not in dirs:
-            dirs.append(d)
+        # 优先用导入时算好的房间目录清单（可能同时来自 modify/world 与 world，
+        # 见 mod_importer.region_room_dirs）；旧数据没有这个字段就按目录名推导。
+        explicit = src.get("roomsDirs")
+        if explicit:
+            for d in explicit:
+                if d and d not in dirs:
+                    dirs.append(d)
+            continue
+        # modify 补丁目录优先：游戏加载顺序是 world/ → modify/world/，后者覆盖前者
+        for raw in list(src.get("overridePaths") or []) + [src.get("path")]:
+            d = rooms_dir_of(raw)
+            if d and d not in dirs:
+                dirs.append(d)
+    return dirs
+
+
+def _layer_world_dirs(region: dict, layer_id: str | None = None) -> list[str]:
+    """层记录过的 world 根目录（门房间的 gates/ 在这些根下）。"""
+    dirs: list[str] = []
+    layers = region.get("layers") or []
+    ordered = []
+    if layer_id:
+        ordered.extend([l for l in layers if l.get("id") == layer_id])
+    ordered.extend([l for l in layers if l.get("id") != layer_id])
+    for layer in ordered:
+        for d in (layer.get("source") or {}).get("worldDirs") or []:
+            if d and d not in dirs:
+                dirs.append(d)
     return dirs
 
 
@@ -68,12 +93,22 @@ def candidates(region: dict, room: str, layer_id: str | None = None) -> list[str
     out: list[str] = []
     for d in _layer_dirs(region, layer_id):
         out.append(os.path.join(d, name + ".txt"))
-    # 门房间住在同级的 gates/ 里，文件名是 gate_<小区域>_<小区域>.txt，两侧顺序不定
+    # 门房间住在同级的 gates/ 里，文件名是 gate_<小区域>_<小区域>.txt，两侧顺序不定。
+    # 注意 gates 只跟 world 根有关：模组可能把区域定义放在 modify/world/gw/，
+    # 而门文件仍在 world/gates/，光从 -rooms 目录推会漏。
     parts = name.split("_")
     if len(parts) >= 3 and parts[0] == "gate":
         a, b = parts[1], parts[2]
+        gate_dirs: list[str] = []
         for d in _layer_dirs(region, layer_id):
             gdir = os.path.join(os.path.dirname(d), "gates")
+            if gdir not in gate_dirs:
+                gate_dirs.append(gdir)
+        for world in _layer_world_dirs(region, layer_id):
+            gdir = os.path.join(world, "gates")
+            if gdir not in gate_dirs:
+                gate_dirs.append(gdir)
+        for gdir in gate_dirs:
             for pair in ((a, b), (b, a)):
                 p = os.path.join(gdir, "gate_%s_%s.txt" % pair)
                 if p not in out:

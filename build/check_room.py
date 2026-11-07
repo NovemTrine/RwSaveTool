@@ -43,6 +43,65 @@ gdi32 = ctypes.windll.gdi32
 user32.SetProcessDPIAware()
 
 
+def effective_exits(region: dict, name: str) -> list:
+    """口径 A（《出口编号规则》§15.4）：所有层里 order 最高、且含这间房、
+    且这间房有 exits 的那条记录。前端 effectiveRoom() 必须与它逐条一致。"""
+    best, best_order = None, -1e9
+    for layer in region.get("layers") or []:
+        order = layer.get("order") or 0
+        for room in layer.get("rooms") or []:
+            if str(room.get("name", "")).upper() != str(name).upper():
+                continue
+            if not room.get("exits"):
+                continue
+            if order >= best_order:
+                best_order, best = order, room
+    return (best or {}).get("exits") or []
+
+
+def canvas_exit_cells(code: str, name: str) -> list:
+    """画布实际会画的出口格（房间文件里 type=4 的格子）。
+
+    画布画十字用「房间文件」，右栏读「生效层」，两者可能来自不同层（实测 76 间房
+    出口条数不等），P4 的「行 → 格子」对应就是拿这两份数据对齐出来的。"""
+    path = os.path.join(ROOT, "region_data", code + ".json")
+    region = json.load(open(path, encoding="utf-8"))
+    hit, _ = room_geo.find_file(region, name, None)
+    if not hit:
+        return []
+    try:
+        data = room_geo.load(hit)
+    except Exception:
+        return []
+    return [(m[0], m[1]) for m in data.get("marks") or [] if m[2] == room_geo.MARK_EXIT]
+
+
+def exit_links(ex: list, cells: list) -> list:
+    """镜像前端 rmBuildExitLinks()：出口行 → 画布格子能不能对上（1/0）。
+
+    规则必须一致：先按坐标匹配十字；条数相同才退化成按序号；都对不上记 0。
+    这份镜像用来在前端之外独立算出「哪些行该标无对应格」，避免自我验证。"""
+    used = [False] * len(cells)
+    same = len(cells) == len(ex)
+    out = []
+    for i, e in enumerate(ex):
+        hit = -1
+        for k, c in enumerate(cells):
+            if used[k]:
+                continue
+            if c[0] == e.get("x") and c[1] == e.get("y"):
+                hit = k
+                break
+        if hit < 0 and same and i < len(cells) and not used[i]:
+            hit = i
+        if hit < 0:
+            out.append(0)
+            continue
+        used[hit] = True
+        out.append(1)
+    return out
+
+
 def find_hwnd(title: str):
     found = []
 
@@ -401,6 +460,250 @@ def main() -> int:
               tog.get("before") is True and tog.get("after") is False
               and tog.get("shown") is False, str(tog))
         grab(os.path.join(SHOTS, "room_card_climb_off.bmp"))
+
+        # ---- 10.5 P4：默认全屏两栏 + 右侧出口清单 ----
+        # P4 起默认全屏：右栏清单只在全屏可见，默认紧凑会让「出口跳转 / 悬停高亮」没有入口。
+        js("window.__rwTest.openRoom('GW','%s');" % room)
+        time.sleep(1.2)
+        wide = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        check("默认就是全屏两栏（P4 起，右栏才有入口）",
+              wide.get("full") is True and wide.get("sideShown") is True
+              and (wide.get("sideW") or 0) >= 200 and (wide.get("stageH") or 0) > 200,
+              f"full={wide.get('full')} side={wide.get('sideShown')} "
+              f"sideW={wide.get('sideW')} stageH={wide.get('stageH')}")
+
+        js("document.getElementById('rm-full').click();")
+        time.sleep(1.0)
+        compact = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        check("点「紧凑」后卡片变窄、右栏收起、画布仍撑开",
+              compact.get("full") is False and compact.get("sideShown") is False
+              and (compact.get("cardW") or 0) < (wide.get("cardW") or 0)
+              and (compact.get("stageH") or 0) > 200,
+              f"full={compact.get('full')} side={compact.get('sideShown')} "
+              f"cardW={compact.get('cardW')} stageH={compact.get('stageH')}")
+
+        js("document.getElementById('rm-full').click();")
+        time.sleep(1.0)
+        wide = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        check("点回「全屏」两栏还原且不横向溢出",
+              wide.get("full") is True and wide.get("sideShown") is True
+              and (wide.get("bodyOverflow") or 0) <= 1,
+              f"full={wide.get('full')} side={wide.get('sideShown')} "
+              f"overflow={wide.get('bodyOverflow')}")
+
+        # ---- 10.6 全屏时关闭键不能被操作组压住（S1-B）----
+        # .modal-card.full .modal-head 的 padding 会盖掉 .room-head 的 padding-right:58px，
+        # 全屏后 × 会正好落进按钮组尾部按钮的矩形里，肉眼就是「关闭键消失了」。
+        geo = loads(js(
+            "JSON.stringify((function(){"
+            "var c=document.getElementById('rm-close');"
+            "var a=document.querySelector('#room-modal .rm-actions');"
+            "if(!c||!a) return null;"
+            "var rc=c.getBoundingClientRect(), ra=a.getBoundingClientRect();"
+            "var overlap=!(rc.right<=ra.left||rc.left>=ra.right||rc.bottom<=ra.top||rc.top>=ra.bottom);"
+            "return {overlap:overlap,"
+            " close:[Math.round(rc.left),Math.round(rc.top),Math.round(rc.right)],"
+            " actsRight:Math.round(ra.right),"
+            " visible:rc.width>0&&rc.height>0};})())"
+        )) or {}
+        check("全屏时关闭键可见且不与操作组重叠",
+              geo.get("visible") is True and geo.get("overlap") is False,
+              f"overlap={geo.get('overlap')} close={geo.get('close')} "
+              f"actsRight={geo.get('actsRight')}")
+
+        ref_ex = effective_exits(region, room)
+        n_ref = len(ref_ex)
+        n_unk = sum(1 for e in ref_ex if not e.get("to"))
+        check("出口清单条数 = 数据里的出口数（同一口径）",
+              wide.get("exits") == n_ref and wide.get("exitsCounted") == n_ref,
+              f"行 {wide.get('exits')} / 读数 {wide.get('exitsCounted')} / 数据 {n_ref}")
+        check("没有去向的出口在清单里标成「未知」",
+              wide.get("exitsUnknown") == n_unk,
+              f"未知行 {wide.get('exitsUnknown')} / 数据 {n_unk} "
+              f"（截断={wide.get('exitTruncated')}）")
+        grab(os.path.join(SHOTS, "room_card_full.bmp"))
+
+        # ---- 10.7 出口清单点击跳转（S2）----
+        row0_to = (ref_ex[0].get("to") if ref_ex else None)
+        js("var r=document.querySelector('#rm-exits .rm-exit-row'); if(r) r.click();")
+        time.sleep(1.4)
+        jumped = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        if row0_to:
+            check("点出口清单第一行跳到目标房间",
+                  jumped.get("open") is True
+                  and str(jumped.get("room") or "").upper() == str(row0_to).upper(),
+                  f"{room} 的 1 号口 → {row0_to}，卡片 {jumped.get('room')}")
+            check("跳转后副标题标出来路",
+                  "来自" in (jumped.get("sub") or ""),
+                  f"sub={jumped.get('sub')}")
+        else:
+            check("点没有去向的出口行不跳转（只提示）",
+                  jumped.get("open") is True
+                  and str(jumped.get("room") or "").upper() == str(room).upper(),
+                  f"卡片仍在 {jumped.get('room')}")
+        js("window.__rwTest.openRoom('GW','%s');" % room)
+        time.sleep(1.0)
+
+        # 小窗口（1366×768 笔记本的可用区）下两栏仍然各自成立
+        try:
+            window.resize(1180, 720)
+        except Exception:
+            pass
+        time.sleep(1.0)
+        small = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        check("小窗口（1180×720）全屏两栏仍不溢出",
+              (small.get("bodyOverflow") or 0) <= 1 and small.get("sideShown") is True
+              and (small.get("stageH") or 0) > 200,
+              f"overflow={small.get('bodyOverflow')} side={small.get('sideShown')} "
+              f"stageH={small.get('stageH')} card={small.get('cardW')}×{small.get('cardH')}"
+              f"（画面 {small.get('viewW')}×{small.get('viewH')}）")
+        try:
+            window.resize(1400, 980)
+        except Exception:
+            pass
+        time.sleep(0.8)
+
+        # ---- 10.8 P4：悬停右栏某行 → 画布点亮对应出口（方案 C）----
+        # 常驻不画徽章；悬停第 i 行才在画布上叠「环 + 数字」，一次只亮一个，不会叠在一起。
+        js("window.__rwTest.openRoom('GW','%s');" % room)
+        time.sleep(1.3)
+        base = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        ref_ex = effective_exits(region, room)
+        links = base.get("exitLinks") or []
+        want_links = exit_links(ref_ex, canvas_exit_cells("GW", room))
+        check("「行 → 格子」的对应与独立复算一致",
+              links == want_links and any(links),
+              f"行 {len(ref_ex)} 期望 {want_links} 实测 {links} "
+              f"无格={base.get('exitNoCell')}")
+
+        # 挑第一行「画布上确有格子」的出口来悬停（极少数房间第 1 行就缺格）
+        good = [i for i, v in enumerate(links) if v]
+        if good:
+            gi = good[0]
+            js("var r=document.querySelector('#rm-exits .rm-exit-row[data-rmexit=\"%d\"]');"
+               "if(r) r.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));" % gi)
+            time.sleep(0.5)
+            h0 = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+            px0 = loads(js("JSON.stringify(window.__rwTest.roomBadgePixel())")) or {}
+            want0 = [ref_ex[gi].get("x"), ref_ex[gi].get("y")]
+            check("悬停某行：行加高亮、画布点亮同一个出口格、徽章画出强调色",
+                  h0.get("hoverExit") == gi and h0.get("hoverRowMark") == 1
+                  and (h0.get("hoverCell") or [None, None])[:2] == want0
+                  and px0.get("match") is True,
+                  f"行 {gi + 1} hover={h0.get('hoverExit')} mark={h0.get('hoverRowMark')} "
+                  f"cell={h0.get('hoverCell')} want={want0} pixel={px0}")
+            grab(os.path.join(SHOTS, "room_card_hover.bmp"))
+
+            if len(good) >= 2:
+                gi2 = good[1]
+                js("var r=document.querySelector('#rm-exits .rm-exit-row[data-rmexit=\"%d\"]');"
+                   "if(r) r.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));" % gi2)
+                time.sleep(0.5)
+                h1 = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+                want1 = [ref_ex[gi2].get("x"), ref_ex[gi2].get("y")]
+                check("换到另一行：高亮跟着换，且仍然只亮一个",
+                      h1.get("hoverExit") == gi2 and h1.get("hoverRowMark") == 1
+                      and (h1.get("hoverCell") or [None, None])[:2] == want1,
+                      f"行 {gi2 + 1} hover={h1.get('hoverExit')} "
+                      f"mark={h1.get('hoverRowMark')} cell={h1.get('hoverCell')} want={want1}")
+        else:
+            check("悬停高亮样本（这间房画布没有出口格，跳过）", True, "skipped")
+
+        js("var b=document.getElementById('rm-exits');"
+           "if(b) b.dispatchEvent(new MouseEvent('mouseleave'));")
+        time.sleep(0.4)
+        hz = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        check("鼠标移出清单：高亮消失、画布回到常态",
+              hz.get("hoverExit") == -1 and hz.get("hoverRowMark") == 0,
+              f"hover={hz.get('hoverExit')} mark={hz.get('hoverRowMark')}")
+
+        # 层不一致的房间：行比画布格子多的那些，悬停时不许画「悬空徽章」
+        mm_room = None
+        mm_expect = []
+        seen_mm = set()
+        for layer in region.get("layers") or []:
+            for r in layer.get("rooms") or []:
+                nm = str(r.get("name") or "")
+                if not nm or nm in seen_mm:
+                    continue
+                seen_mm.add(nm)
+                ex = effective_exits(region, nm)
+                if not ex:
+                    continue
+                ok = exit_links(ex, canvas_exit_cells("GW", nm))
+                if 0 in ok:
+                    mm_room, mm_expect = nm, ok
+                    break
+            if mm_room:
+                break
+        if mm_room:
+            js("window.__rwTest.openRoom('GW','%s');" % mm_room)
+            time.sleep(1.3)
+            mm = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+            mm_links = mm.get("exitLinks") or []
+            bad = [i for i, v in enumerate(mm_links) if not v]
+            check("层不一致的房间：对不上的行标「画布无对应格」",
+                  mm_links == mm_expect and (mm.get("exitNoCell") or 0) == len(bad)
+                  and len(bad) >= 1,
+                  f"{mm_room} 期望 {mm_expect} 实测 {mm_links} "
+                  f"无格 {mm.get('exitNoCell')} 行 {mm.get('exitsCounted')}")
+            if bad:
+                js("var r=document.querySelector('#rm-exits .rm-exit-row[data-rmexit=\"%d\"]');"
+                   "if(r) r.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));" % bad[0])
+                time.sleep(0.5)
+                mb = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+                mbpx = loads(js("JSON.stringify(window.__rwTest.roomBadgePixel())")) or {}
+                check("悬停「无对应格」的行：行高亮但不画悬空徽章",
+                      mb.get("hoverExit") == bad[0] and mb.get("hoverRowMark") == 1
+                      and mbpx.get("match") is not True,
+                      f"{mm_room} 第 {bad[0] + 1} 行 hover={mb.get('hoverExit')} "
+                      f"mark={mb.get('hoverRowMark')} pixel={mbpx}")
+            js("var b=document.getElementById('rm-exits');"
+               "if(b) b.dispatchEvent(new MouseEvent('mouseleave'));")
+            time.sleep(0.3)
+        else:
+            check("层不一致样本（GW 里没找到，跳过）", True, "skipped")
+
+        time.sleep(0.4)
+        cfg_now = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
+        check("全屏状态写进 config.ui.roomCardFull",
+              (cfg_now.get("ui") or {}).get("roomCardFull") is True,
+              f"roomCardFull={(cfg_now.get('ui') or {}).get('roomCardFull')}")
+
+        js("document.getElementById('rm-full').click();")
+        time.sleep(0.7)
+        back = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        cfg_back = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
+        check("切到紧凑也会落盘（不污染配置）",
+              back.get("full") is False and back.get("sideShown") is False
+              and (cfg_back.get("ui") or {}).get("roomCardFull") is False,
+              f"full={back.get('full')} cfg={(cfg_back.get('ui') or {}).get('roomCardFull')}")
+
+        # 默认是全屏，测完要切回去，别把主人的配置留在紧凑上
+        js("document.getElementById('rm-full').click();")
+        time.sleep(0.7)
+        cfg_rest = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
+        check("切回全屏并落盘（恢复默认）",
+              (cfg_rest.get("ui") or {}).get("roomCardFull") is True,
+              f"roomCardFull={(cfg_rest.get('ui') or {}).get('roomCardFull')}")
+
+        # 截断房间：SL_D01 是 4 个出口 / 3 条连接（方案 A 的典型样本）
+        js("window.__rwTest.openRoom('SL','SL_D01');")
+        time.sleep(1.3)
+        sl = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        sl_ref = effective_exits(
+            json.load(open(os.path.join(ROOT, "region_data", "SL.json"), encoding="utf-8")),
+            "SL_D01")
+        sl_unk = sum(1 for e in sl_ref if not e.get("to"))
+        check("截断房间：行数照给，尾部标「未知」而不是少一行",
+              sl.get("exits") == len(sl_ref) == sl.get("exitsCounted")
+              and sl.get("exitTruncated") is True
+              and (sl.get("exitsUnknown") or 0) == sl_unk and sl_unk >= 1,
+              f"行 {sl.get('exits')} / 数据 {len(sl_ref)} / 未知 {sl.get('exitsUnknown')} "
+              f"/ 应为 {sl_unk} / 截断={sl.get('exitTruncated')} note={sl.get('exitNote')}")
+        check("截断房间的右栏有说明文案",
+              "编号" in (sl.get("exitNote") or "") and "未知" in (sl.get("exitNote") or ""),
+              sl.get("exitNote"))
 
         # ---- 11. 配色：默认＝编辑器灰阶，可自定义、可恢复 ----
         pal = loads(js(

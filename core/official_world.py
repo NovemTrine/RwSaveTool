@@ -136,16 +136,24 @@ def discover_packs(root: str) -> list[dict]:
             children = []
         for index, entry in enumerate(children, start=1):
             world = os.path.join(entry.path, "world")
-            if os.path.isdir(world):
+            modify = mod_importer.modify_world_dir(entry.path)
+            # 有的包只有 modify/（Downpour 对原版区域的改动就走这条路），必须一起认
+            if os.path.isdir(world) or os.path.isdir(modify):
                 packs.append(
                     {
                         "id": f"official:{entry.name.lower()}",
                         "label": _pack_label(entry.name),
-                        "worldDir": world,
+                        "worldDir": world if os.path.isdir(world) else None,
+                        "modifyDir": modify if os.path.isdir(modify) else None,
                         "order": index,
                     }
                 )
     return packs
+
+
+def _pack_codes(pack: dict) -> dict[str, dict]:
+    """一个包覆盖的区域 → 与 mod_importer.scan_region_dirs 同构。"""
+    return mod_importer.scan_region_dirs(pack.get("worldDir"), pack.get("modifyDir"))
 
 
 def _pack_label(folder: str) -> str:
@@ -162,11 +170,11 @@ def describe(root: str) -> dict:
     packs = discover_packs(root)
     regions: dict[str, list[str]] = {}
     for pack in packs:
-        for code in mod_importer._region_dirs_raw(pack["worldDir"]):
+        for code in _pack_codes(pack):
             regions.setdefault(code, []).append(pack["label"])
     return {
         "root": root,
-        "packs": [{"id": p["id"], "label": p["label"], "regions": len(mod_importer._region_dirs_raw(p["worldDir"]))} for p in packs],
+        "packs": [{"id": p["id"], "label": p["label"], "regions": len(_pack_codes(p))} for p in packs],
         "regions": {code: labels for code, labels in sorted(regions.items())},
         "regionCount": len(regions),
     }
@@ -218,17 +226,34 @@ def import_official(
     report("扫描游戏本体", 5, f"{len(packs)} 个数据包")
 
     regions: list[dict] = []
+    region_dirs: list[list[str]] = []
     warnings: list[str] = []
+    # 原版房间文件的兜底目录：包只「改造」某区域时（例如 Downpour 对 SL），
+    # 未改动的房间文件仍然在原版 world/<reg>-rooms 里，找不到就整间房没有出口数据。
+    game_world = os.path.join(root, "RainWorld_Data", "StreamingAssets", "world")
     # 同一个区域可能在多个包里有不同版本（原版 / Downpour / Watcher）。
     # 它们不是重复数据，而是三个「来源」，全部保留，由用户在界面上决定哪个参与计算。
     seen_codes: dict[str, list[str]] = {}
 
     for index, pack in enumerate(packs):
         report("读取数据包", 10 + int(80 * index / max(1, len(packs))), pack["label"])
-        dirs = mod_importer._region_dirs_raw(pack["worldDir"])
-        for code, region_dir in sorted(dirs.items()):
+        dirs = _pack_codes(pack)
+        for code, slot in sorted(dirs.items()):
+            # 基底回退：Downpour / Watcher 这类包对原版区域往往只带 `modify/` 补丁，
+            # 连 world/<reg> 里也只有地图；完整房间定义仍在游戏原版 world/<reg>。
+            # 不回退就会把整层判成「仅地图」→ 不进分母（CC 44 vs 61、GW 85 vs 136）。
+            # 基础包自己就是 game_world，不必重复读一遍。
+            fallback_dir = None
+            if pack.get("id") != "official:base":
+                candidate = os.path.join(game_world, code)
+                if not os.path.isdir(candidate):
+                    lowered = os.path.join(game_world, code.lower())
+                    candidate = lowered if os.path.isdir(lowered) else ""
+                fallback_dir = candidate or None
             try:
-                region, notes = mod_importer._import_region(code, region_dir)
+                region, notes = mod_importer._import_region(
+                    code, slot["base"], slot["override"], fallback_dir
+                )
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"{code}: 读取异常 {type(exc).__name__}: {exc}")
                 continue
@@ -252,15 +277,29 @@ def import_official(
             }
             seen_codes.setdefault(code, []).append(pack["label"])
             regions.append(region)
+            dirs = mod_importer.region_room_dirs(
+                [pack.get("modifyDir"), pack.get("worldDir"), game_world], code
+            )
+            region["source"]["roomsDirs"] = dirs
+            region["source"]["worldDirs"] = [
+                d
+                for d in (pack.get("modifyDir"), pack.get("worldDir"), game_world)
+                if d and os.path.isdir(d)
+            ]
+            region_dirs.append(dirs)
 
     report("整理结果", 95, f"{len(regions)} 个区域")
-    regions.sort(key=lambda r: r["code"])
+    # 出口编号：必须在所有区域收集完之后做（门房间要跨区域合并槽位）
+    exit_stats = mod_importer.attach_exits(regions, region_dirs)
+    order = sorted(range(len(regions)), key=lambda i: regions[i]["code"])
+    regions = [regions[i] for i in order]
     return {
         "ok": True,
         "root": root,
         "packs": [{"id": p["id"], "label": p["label"], "order": p["order"]} for p in packs],
         "regions": regions,
         "warnings": warnings,
+        "exitStats": exit_stats,
     }
 
 
@@ -273,6 +312,6 @@ def official_region_codes(root: str | None = None) -> dict[str, str]:
     out: dict[str, str] = {}
     for item in roots:
         for pack in discover_packs(item):
-            for code in mod_importer._region_dirs_raw(pack["worldDir"]):
+            for code in _pack_codes(pack):
                 out.setdefault(code, pack["label"])
     return out

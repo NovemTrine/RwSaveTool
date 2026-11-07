@@ -222,14 +222,28 @@ def main() -> int:
             time.sleep(0.5)
             check("点「批量翻译」进入粘贴面板", js("!!document.getElementById('tr-bulk')") is True, "")
 
+            def set_bulk(text, expect):
+                """粘贴表格，等解析结果里出现 expect 再返回。
+
+                直接赋值 + dispatch('input') 有竞态：面板刚重建时监听还没挂上，事件会被
+                吞掉（实测偶发「解析 0 行」）。所以按「期望内容」重试，而不是按「有内容」。
+                """
+                note = ""
+                for _ in range(6):
+                    js("var t=document.getElementById('tr-bulk'); t.value=%s;"
+                       "t.dispatchEvent(new Event('input',{bubbles:true}));"
+                       % json.dumps(text, ensure_ascii=False))
+                    for _ in range(12):
+                        time.sleep(0.15)
+                        note = js("(document.getElementById('tr-bulk-note')||{}).textContent") or ""
+                        if expect in note:
+                            return note
+                return note
+
             # 注释 / 空行 / 空中文都要跳过；代码与英文名混写都要命中；跨分类要生效
             table = ("//注释行\n#另一种注释\n\nRF|珊瑚洞窟Z\nBig Eel|大鳗Z\n"
                      "Survivor|生还者Z\nNoSuchRegion|随便\nBlank|   \n")
-            js("var t=document.getElementById('tr-bulk'); t.value=%s;"
-               "t.dispatchEvent(new Event('input',{bubbles:true}));"
-               % json.dumps(table, ensure_ascii=False))
-            time.sleep(0.9)
-            out["bulkNote"] = js("(document.getElementById('tr-bulk-note')||{}).textContent")
+            out["bulkNote"] = set_bulk(table, "命中 3 条")
             check("批量解析：命中 3（区域/生物/通行证各一）· 未匹配 1 · 跳过 1",
                   "命中 3 条" in (out["bulkNote"] or "")
                   and "未匹配 1" in (out["bulkNote"] or "")
@@ -248,9 +262,8 @@ def main() -> int:
             except (OSError, ValueError):
                 rf_zh = ""
             if rf_zh:
-                js("var t=document.getElementById('tr-bulk'); t.value='RF|%s';"
-                   "t.dispatchEvent(new Event('input',{bubbles:true}));" % rf_zh)
-                time.sleep(0.9)
+                set_bulk("RF|%s" % rf_zh, "不会写入")
+                time.sleep(0.3)
                 out["bulkSame"] = {
                     "note": js("(document.getElementById('tr-bulk-note')||{}).textContent"),
                     "text": js("(document.getElementById('tr-bulk-apply')||{}).textContent"),
@@ -261,10 +274,7 @@ def main() -> int:
                       and out["bulkSame"]["disabled"] is True, str(out["bulkSame"]))
 
             # 真正写入：连点两次（应用 → 确认写入）
-            js("var t=document.getElementById('tr-bulk'); t.value=%s;"
-               "t.dispatchEvent(new Event('input',{bubbles:true}));"
-               % json.dumps(table, ensure_ascii=False))
-            time.sleep(0.9)
+            set_bulk(table, "命中 3 条")
             js("document.getElementById('tr-bulk-apply').click();")
             time.sleep(0.4)
             out["bulkArmed"] = js("(document.getElementById('tr-bulk-apply')||{}).textContent")

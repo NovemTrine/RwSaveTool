@@ -1,7 +1,17 @@
 """角色可达：房间级排除（角色专属 / 手动）与完成度口径。
 
-产物： docs/reach_last.json（原始读数，排查用）
+产物： build/_shots/reach_last.json（原始读数，排查用）
 会临时改 config.ui.roomExcluded / roomStrict，跑完原样还原。
+
+口径语义（T-01 之后写清，别再按"宽松 = 全部房间"理解）：
+    applyConditional() 里只有 byHand / byRole 受 state.roomStrict 门控，
+    exclusiveOut / hidden（EXCLUSIVEROOM / HIDEROOM 条件房间）在两种口径下都剔除
+    —— 条件房间本来就只对某角色存在，放开就永远到不了 100%。
+    所以 宽松 ≠ 全部房间，恒有：
+        严格 = U - |cond ∪ role ∪ manual|
+        宽松 = U - |cond|
+    两者的差 = |role \\ cond| + |manual \\ cond|，绝不可能等于 roleDrop
+    （同一房间会同时进 roleDropped 和 conditionalDropped 两个计数器）。
 """
 from __future__ import annotations
 
@@ -21,6 +31,80 @@ from core.bridge import Api  # noqa: E402
 
 TITLE = "RwSaveTool 可达检查"
 CFG = os.path.join(ROOT, "config.json")
+
+# 与 ui/rw_gui.html 的 ROOM_OWNER 表保持一致：房间名带这些词 = 某角色专属房间。
+# 改那边的正则就要同步改这里，否则下面 ok_only_role 会误报。
+ROLE_HINT = (
+    "SAINT", "ARTIFICER", "ARTY", "SPEARMASTER", "SPEAR",
+    "RIVULET", "GOURMAND", "GOURM", "HUNTER", "NIGHT",
+)
+
+
+def _upper_names(raw) -> set[str]:
+    return {str(n).upper() for n in (raw or [])}
+
+
+def _loose_ok(strict: dict, loose: dict, role_drop: int = 0,
+              manual=None) -> tuple[bool, bool, str]:
+    """严格 / 宽松两口径的集合关系判定。
+
+    纯函数，不进界面就能自检（见 build/_selftest_reach.py 的用法）。
+    返回 (ok_subset, ok_only_role, msg)：
+      ok_subset   —— 严格 ⊆ 宽松、宽松确实多出一批、且口径差 == 集合差；
+      ok_only_role—— 多出来的每一间都是「名字带角色后缀」或「手动排除」的房间，
+                     且数量不超过角色剔除数（防止哪天把条件房间也放开了）。
+    """
+    sn = _upper_names(strict.get("names"))
+    ln = _upper_names(loose.get("names"))
+    manual = {str(n).upper() for n in (manual or ())}
+    st, lt = strict.get("total"), loose.get("total")
+    lost, gain = sn - ln, ln - sn
+    notes = []
+
+    ok_subset = True
+    if not sn or not ln:
+        ok_subset = False
+        notes.append("names 为空（roomSets 没返回房间清单）")
+    else:
+        if lost:
+            ok_subset = False
+            notes.append("宽松口径下丢了 %d 间：%s" % (len(lost), sorted(lost)[:5]))
+        if not gain:
+            ok_subset = False
+            notes.append("宽松没有比严格多出任何房间")
+        if st != len(sn):
+            ok_subset = False
+            notes.append("严格 total=%r 与 names 长度 %d 不一致" % (st, len(sn)))
+        if lt != len(ln):
+            ok_subset = False
+            notes.append("宽松 total=%r 与 names 长度 %d 不一致" % (lt, len(ln)))
+        if (lt or 0) - (st or 0) != len(gain):
+            ok_subset = False
+            notes.append("口径差 %d ≠ 集合差 %d" % ((lt or 0) - (st or 0), len(gain)))
+
+    ok_only_role = True
+    stray = [n for n in gain if not any(h in n for h in ROLE_HINT) and n not in manual]
+    if stray:
+        ok_only_role = False
+        notes.append("多出的房间里有 %d 间既非角色专属也非手动：%s"
+                     % (len(stray), sorted(stray)[:5]))
+    # 关键咬合点：条件房间（EXCLUSIVEROOM/HIDEROOM）不受口径门控，两种口径剔除数必须一致。
+    # 若有人给 exclusiveOut/hidden 加上 strict 门控，宽松会多放出一整批条件房间，这里变红。
+    sc, lc = strict.get("condDrop"), loose.get("condDrop")
+    if sc != lc:
+        ok_only_role = False
+        notes.append("条件房间剔除数不一致：严格 %r vs 宽松 %r（口径不该影响条件房间）" % (sc, lc))
+    if role_drop and len(gain) > role_drop:
+        ok_only_role = False
+        notes.append("多出 %d 间 > 角色剔除 %d 间（宽松不该放开这么多）"
+                     % (len(gain), role_drop))
+
+    msg = "严格 %s → 宽松 %s；多出 %d 间%s" % (
+        st, lt, len(gain), ("：" + ", ".join(sorted(gain)[:6])) if gain else "")
+    if notes:
+        msg += " ｜ " + "; ".join(notes)
+    return ok_subset, ok_only_role, msg
+
 
 
 def main() -> int:
@@ -98,10 +182,17 @@ def main() -> int:
             time.sleep(0.8)
             loose = sets("RF", "White")
             out["loose"] = {k: v for k, v in loose.items() if k != "names"}
-            check(loose.get("strict") is False and (loose.get("roleDrop") or 0) == 0
-                  and (loose.get("total") or 0) == (before or 0) + (mine.get("roleDrop") or 0),
-                  "切「宽松」后口径回到全部房间",
-                  f"{before} → {loose.get('total')}")
+            out["loose"]["gain"] = sorted(_upper_names(loose.get("names"))
+                                          - _upper_names(mine.get("names")))
+            ok_subset, ok_only_role, msg = _loose_ok(mine, loose, mine.get("roleDrop") or 0)
+            # 注意：宽松 ≠ 全部房间。条件房间（EXCLUSIVEROOM/HIDEROOM）不受口径门控，
+            # 所以这里不能断言"回到全部房间"，只能断言集合关系与"只放开角色/手动剔除"。
+            check(loose.get("strict") is False and (loose.get("roleDrop") or 0) == 0 and ok_subset,
+                  "切「宽松」后不再按角色剔除，且严格口径的房间一个不丢",
+                  msg)
+            check(ok_only_role,
+                  "宽松多出的房间只由角色专属房间构成（条件房间仍剔除）",
+                  msg)
             js("window.__rwTest.setStrict(true);")
             time.sleep(0.8)
 
