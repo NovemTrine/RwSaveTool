@@ -753,6 +753,269 @@ def main() -> int:
               not (after.get("custom") or {}).get("dark")
               and not (after.get("custom") or {}).get("light"), str(after.get("custom")))
 
+        # ---- 12. 实机视图（V1.2 · M2）----
+        # 先回到矢量，并挑一间这一轮还没渲过的房（L1 空着才测得出「首次要等」）
+        js("var b=document.getElementById('rm-close'); if(b) b.click();")
+        time.sleep(0.3)
+        js("window.__rwTest.setRoomStyle('vector');")
+        time.sleep(0.2)
+        js("window.__rwTest.openRoom('GW','GW_B08');")
+        time.sleep(1.8)
+        vec_card = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        vec_px = loads(js("JSON.stringify(window.__rwTest.roomPixels(8))")) or []
+        check("默认是矢量：画布上没有实机位图",
+              vec_card.get("style") == "vector" and not vec_card.get("live")
+              and not vec_card.get("liveFlagOn"),
+              f"style={vec_card.get('style')} live={vec_card.get('live')}")
+        check("「实机」开关自动出现（素材探测通过）",
+              vec_card.get("styleShown") is True,
+              f"styleShown={vec_card.get('styleShown')}")
+
+        t_live = time.time()
+        js("window.__rwTest.setRoomStyle('live');")
+        time.sleep(0.35)
+        early = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        check("切到实机：0.35 s 时卡片已可交互、矢量仍在（渲染没堵住开卡）",
+              early.get("open") is True and early.get("style") == "live"
+              and (early.get("liveFlagOn") or (early.get("live") or {}).get("ok")),
+              f"open={early.get('open')} flag={early.get('liveFlag')!r} live={early.get('live')}")
+
+        live_card, waited = {}, 0.0
+        for _ in range(24):
+            time.sleep(0.5)
+            live_card = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+            waited = time.time() - t_live
+            if (live_card.get("live") or {}).get("ok"):
+                break
+        lv = live_card.get("live") or {}
+        check("实机图渲完并贴到画布", lv.get("ok") is True and (lv.get("w") or 0) > 0,
+              f"live={lv} 等待 {waited:.1f}s")
+        check("位图分辨率与房间格数一致（w ÷ 每格像素 = 格数）",
+              bool(lv.get("px")) and (lv.get("w") or 0) == (live_card.get("w") or -1) * (lv.get("px") or 1),
+              f"{lv.get('w')}×{lv.get('h')} / {lv.get('px')}px = "
+              f"{(lv.get('w') or 0) / max(1, lv.get('px') or 1)} vs 格数 {live_card.get('w')}")
+
+        # 淡入是 rAF 驱动的（120 ms），窗口在后台会被节流；采样像素前先把它收尾，
+        # 否则读到的可能是「alpha 还是 0」的画布，等于拿矢量图当实机图比对。
+        js("window.__rwTest.revealLive();")
+        time.sleep(0.15)
+        live_px = loads(js("JSON.stringify(window.__rwTest.roomPixels(8))")) or []
+        pairs = [(a, b) for a, b in zip(vec_px, live_px) if a and b]
+        # 改没改要按「肉眼可辨」算：重绘同一帧时抗锯齿会有 1~2/255 的抖动，
+        # 把它当成变化会让这条断言变成噪声测试。差 8 以上才算真的换了内容。
+        changed = sum(1 for a, b in pairs if max(abs(x - y) for x, y in zip(a, b)) > 8)
+        ratio = (changed / len(pairs)) if pairs else 0.0
+        check("位图真的画出去了（抽样点大面积改变 ≥ 1/3）",
+              len(pairs) >= 40 and ratio >= 0.34,
+              f"{changed}/{len(pairs)} = {ratio:.2f}")
+
+        # 悬停时出口十字会被**故意**压到 0.28（让位给徽章），那是设计不是 bug。
+        # 这条断言问的是「谁在谁上面」，所以要先把悬停收干净，否则测到的是压暗后的混色。
+        js("var b=document.getElementById('rm-exits');"
+           "if(b) b.dispatchEvent(new MouseEvent('mouseleave'));")
+        time.sleep(0.4)
+        marks = loads(js("JSON.stringify(window.__rwTest.roomMarkPixels())")) or {}
+        mk = marks.get("marks") or []
+        hit = sum(1 for m in mk if m.get("match"))
+        check("出口十字仍在位图之上（位图没盖住交互层）",
+              marks.get("ready") and len(mk) >= 1 and hit == len(mk),
+              f"{hit}/{len(mk)} 个出口格仍是强调色 (期望 {marks.get('expect')}) "
+              f"实测 {[m.get('rgb') for m in mk]} hover={live_card.get('hoverExit')}")
+
+        cfg_live = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
+        check("画法写进 config.ui.roomCardStyle",
+              (cfg_live.get("ui") or {}).get("roomCardStyle") == "live",
+              f"roomCardStyle={(cfg_live.get('ui') or {}).get('roomCardStyle')}")
+
+        grab(os.path.join(SHOTS, "room_live.bmp"))
+
+        # 切回矢量：位图必须退出绘制，画布回到切之前那一帧
+        js("window.__rwTest.setRoomStyle('vector');")
+        time.sleep(0.5)
+        back_card = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        back_px = loads(js("JSON.stringify(window.__rwTest.roomPixels(8))")) or []
+        # 容差 3/255：同一帧重绘时画布的抗锯齿本就会有 1~2 级的抖动（实测 15/64 点差 1~2），
+        # 那不是「位图还在」，位图真留着会是几十级的差（同 A vs C 的 64/64）。
+        same = sum(1 for a, b in zip(vec_px, back_px)
+                   if a and b and max(abs(x - y) for x, y in zip(a, b)) <= 3)
+        total = sum(1 for a, b in zip(vec_px, back_px) if a and b)
+        check("切回矢量：位图退出绘制，画布回到原样",
+              back_card.get("style") == "vector" and total > 0 and same / total >= 0.95,
+              f"style={back_card.get('style')} 同色(±3) {same}/{total}")
+
+        cfg_rest2 = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
+        check("配置恢复成矢量（不把用户的默认值留在实机上）",
+              (cfg_rest2.get("ui") or {}).get("roomCardStyle") == "vector",
+              f"roomCardStyle={(cfg_rest2.get('ui') or {}).get('roomCardStyle')}")
+
+        # ---- 13. 渲染缓存与预取（V1.2 · M3）----
+        from core import room_cache, room_render  # noqa: PLC0415 - 回归脚本局部导入
+
+        info1 = api.room_cache_info()
+        check("实机图已落盘（L2 目录有文件、有体积）",
+              info1.get("ok") and (info1.get("files") or 0) >= 1 and (info1.get("bytes") or 0) > 0,
+              f"{info1.get('files')} 张 / {(info1.get('bytes') or 0) // 1024} KB @ {info1.get('path')}")
+
+        # SLO：L2 命中。三级缓存要一起清（JS 的 L1 + 后端的进程内 LRU）才轮得到磁盘。
+        # 顺序很关键：先用矢量开卡（不触发渲染），再清缓存，最后切实机——只发一次请求。
+        # 否则「切档位」这一步会先渲一次，把结果塞回内存 LRU，测到的就是 memory 0 ms。
+        js("window.__rwTest.setRoomStyle('vector');")
+        time.sleep(0.3)
+        js("window.__rwTest.openRoom('GW','GW_B08');")
+        time.sleep(1.6)
+        js("window.__rwTest.clearLiveCache();")
+        room_render._render_cache.clear()
+        js("window.__rwTest.setRoomStyle('live');")
+        hit = {}
+        for _ in range(24):
+            time.sleep(0.4)
+            hit = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+            lv2 = hit.get("live") or {}
+            if lv2.get("ok"):
+                break
+        lv2 = hit.get("live") or {}
+        check("清空 L1 后重开同一间：直接吃磁盘缓存（≤ 200 ms）",
+              lv2.get("src") == "disk" and (lv2.get("ms") or 9999) <= 200,
+              f"source={lv2.get('src')} ms={lv2.get('ms')}")
+
+        # 预取：开卡 300 ms 后会把右栏前 3 个出口排进后台队列。
+        # 先清空缓存再开卡——否则那几个出口房间早就在盘上了，预取命中缓存不写新文件、
+        # 张数不会变。这条断言以前是"看运气"过的（一旦前一步已经把缓存填满就必红）。
+        room_cache.clear_all()
+        room_render._render_cache.clear()
+        room_render._tex_cache.clear()
+        js("window.__rwTest.clearLiveCache();")
+        js("window.__rwTest.setRoomStyle('live');")
+        js("window.__rwTest.openRoom('GW','GW_B08');")
+        for _ in range(40):                 # 先等它把自己这张写下去
+            time.sleep(0.4)
+            if (api.room_cache_info().get("files") or 0) >= 1:
+                break
+        before = api.room_cache_info().get("files") or 0
+        grew = before
+        for _ in range(30):
+            time.sleep(0.5)
+            grew = api.room_cache_info().get("files") or 0
+            if grew > before:
+                break
+        check("开卡后自动预取出口房间（缓存张数变多）", grew > before,
+              f"{before} → {grew} 张")
+
+        # L1 内存也按字节算账（密度一提上来，按张数会撑爆）
+        card_l1 = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        check("L1 内存缓存有字节预算（≤ 48 MB）",
+              (card_l1.get("liveBytes") or 0) <= 48 * 1024 * 1024,
+              f"liveBytes={card_l1.get('liveBytes')} 张数={card_l1.get('liveCached')}")
+
+        # 失效：删区域 / 重导 / 删层都会走 purge_region，这里直接验这个原语
+        gw_dir = room_cache.region_dir("GW")
+        had_dir = os.path.isdir(gw_dir)
+        room_cache.purge_region("GW")
+        info2 = api.room_cache_info()
+        check("区域级失效：整目录删除（重导/删层/删来源都走这条路）",
+              had_dir and not os.path.isdir(gw_dir) and (info2.get("files") or 0) < grew,
+              f"删前 {grew} 张 → 删后 {info2.get('files')} 张，目录还在={os.path.isdir(gw_dir)}")
+
+        # ---- 14. B 档：放大后按视口裁剪补细节 ----
+        # 用 SUMP05（196×72，整图只有 11 px/tile）——这正是 B 档唯一有意义的场景。
+        js("window.__rwTest.setRoomStyle('live');")
+        js("window.__rwTest.openRoom('CC','CC_SUMP05');")
+        base_card = {}
+        for _ in range(50):
+            time.sleep(0.4)
+            base_card = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+            if (base_card.get("live") or {}).get("ok"):
+                break
+        lv0 = base_card.get("live") or {}
+        files_after_full = api.room_cache_info().get("files") or 0
+
+        js("window.__rwTest.zoomRoom(8);")
+        hi_card = {}
+        for _ in range(40):
+            time.sleep(0.4)
+            hi_card = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+            if hi_card.get("hi"):
+                break
+        hi = hi_card.get("hi") or {}
+        check("放大 8× 后补到高密度裁块（顶到素材上限 20 px/tile）",
+              hi and (hi.get("px") or 0) == 20 and (hi.get("px") or 0) > (lv0.get("px") or 0),
+              f"整图 px={lv0.get('px')} 裁块 px={hi.get('px') if hi else None}")
+        check("裁块只覆盖可见范围（不是整间重渲）",
+              hi and 0 < (hi.get("tw") or 0) < (hi_card.get("w") or 1)
+              and 0 < (hi.get("th") or 0) <= (hi_card.get("h") or 1),
+              f"裁块 {hi.get('tw')}×{hi.get('th')} tile vs 房间 "
+              f"{hi_card.get('w')}×{hi_card.get('h')}")
+        files_after_hi = api.room_cache_info().get("files") or 0
+        check("裁块只进内存、不落盘（别把 200 MB 预算挤掉）",
+              files_after_hi == files_after_full,
+              f"整图后 {files_after_full} 张 → 裁块后 {files_after_hi} 张")
+
+        # ---- 15. 缓存清理入口（M4）----
+        # 入口在「区域数据」弹窗顶部：占用多少、几张、一个清理按钮。
+        # 清完必须同时倒掉前端 L1，否则界面上还是旧图，用户会以为「点了没用」。
+        js("window.__rwTest.setRoomStyle('vector');")     # 停掉预取，免得清理后又被写回一张
+        time.sleep(0.6)
+        js("var b=document.getElementById('btn-regions'); if(b) b.click();")
+        bar = {}
+        for _ in range(40):                               # openRegionsModal 要等 loadRegions 回包
+            time.sleep(0.5)
+            bar = loads(js("JSON.stringify(window.__rwTest.cacheBar())")) or {}
+            if bar.get("hasButton"):
+                break
+        # 等这一轮渲染 / 预取彻底停下来：否则「清理 → 立刻被在途请求写回一张」，
+        # 断言会假红（实测过：清理后 0.2 s 内又冒出 3 张，是预取在收尾）。
+        stable, last = 0, -1
+        for _ in range(40):
+            time.sleep(0.5)
+            now_files = api.room_cache_info().get("files") or 0
+            cur = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+            if now_files == last and (cur.get("live") or {}).get("ok"):
+                stable += 1
+                if stable >= 3:
+                    break
+            else:
+                stable = 0
+            last = now_files
+        files_before_clear = api.room_cache_info().get("files") or 0
+        bar_txt = str(bar.get("text") or "")
+        check("区域数据弹窗有「房间渲染缓存」一行（占用 + 张数 + 清理按钮）",
+              bar.get("hasButton") and "MB" in bar_txt and "张" in bar_txt
+              and "统计中" not in bar_txt,
+              f"files={files_before_clear} bar={bar_txt[:60]}")
+
+        js("var b=document.getElementById('m-room-clear'); if(b) b.click();")
+        time.sleep(0.4)
+        js("var b=document.querySelector('#confbox [data-cf=\"yes\"]'); if(b) b.click();")
+        card_after, bar2 = {}, {}
+        for _ in range(30):
+            time.sleep(0.3)
+            card_after = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+            bar2 = loads(js("JSON.stringify(window.__rwTest.cacheBar())")) or {}
+            if (api.room_cache_info().get("files") or 0) == 0 \
+                    and (card_after.get("liveCached") or 0) == 0 \
+                    and "0 张" in str(bar2.get("text") or ""):
+                break
+        after_clear = api.room_cache_info().get("files") or 0
+        check("点「清理」真的清空磁盘缓存",
+              files_before_clear > 0 and after_clear == 0,
+              f"{files_before_clear} 张 → {after_clear} 张")
+        check("清理后当前房间画面还在（不闪白、不重渲）且 L1 已倒掉",
+              (card_after.get("live") or {}).get("ok")
+              and (card_after.get("liveCached") or 0) == 0,
+              f"live.ok={(card_after.get('live') or {}).get('ok')} "
+              f"liveCached={card_after.get('liveCached')}")
+        check("清空后清理按钮置灰、数字归零",
+              bar2.get("disabled") is True and "0 张" in str(bar2.get("text") or ""),
+              str(bar2.get("text") or "")[:60])
+
+        room_cache.clear_all()
+        js("window.__rwTest.setRoomStyle('vector');")
+        time.sleep(0.5)
+        cfg_end = json.load(open(os.path.join(ROOT, "config.json"), encoding="utf-8"))
+        check("收尾：配置回到矢量（不留副作用）",
+              (cfg_end.get("ui") or {}).get("roomCardStyle") == "vector",
+              f"roomCardStyle={(cfg_end.get('ui') or {}).get('roomCardStyle')}")
+
     window.events.loaded += lambda: None
     webview.start(worker)
 

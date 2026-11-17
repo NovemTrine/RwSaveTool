@@ -3,7 +3,8 @@
 用法： .venv/Scripts/python.exe build/check_map.py
 
 检查内容：
-    1. 区域表仍能打开地图弹窗，且弹窗里**没有 canvas**（底图已移除）
+    1. 区域表仍能打开地图弹窗，弹窗里**没有 canvas**（底图走 SVG <image>，P0 起可选叠加）
+    1b. 底图层：默认关闭；打开后加载到 data URL、与房间方块坐标同源；关掉能恢复
     2. SVG 房间方块数量 = 有坐标的房间数；已探索方块 = 完成度的 visited
     3. 未探索清单条数 = total − visited（与区域表同一口径）
     4. 地图层按钮：全部 + 各层；切层后 viewBox 变化
@@ -317,9 +318,66 @@ def main() -> int:
             ))
             m = out["modal"] or {}
             check("地图弹窗打开", m.get("open"))
-            check("已移除底图（弹窗里没有 canvas）", m.get("hasSvg") and not m.get("hasCanvas"))
+            check("弹窗里没有 canvas（底图走 SVG image）", m.get("hasSvg") and not m.get("hasCanvas"))
             check("画出了房间方块", (m.get("rects") or 0) > 0, f"rects={m.get('rects')}")
             check("分层按钮存在", (m.get("layers") or 0) >= 2, f"layers={m.get('layers')}")
+
+            # ---- 底图层（P0）：默认关；开关后叠上游戏底图，且与房间方块同源 ----
+            out["baseOff"] = loads(js("JSON.stringify(window.__rwTest.mapBase())"))
+            check("底图默认关闭（不盖住房间方块）",
+                  bool(out["baseOff"]) and not out["baseOff"].get("on"), str(out["baseOff"]))
+
+            js("var b=document.getElementById('map-base-btn'); if(b) b.click();")
+            time.sleep(0.9)          # 桥接读图 + 淡入
+            out["baseOn"] = loads(js("JSON.stringify(window.__rwTest.mapBase())"))
+            bo = out["baseOn"] or {}
+            check("打开底图后加载到 data URL",
+                  bo.get("on") and str(bo.get("url") or "").startswith("data:image/png"), str(bo))
+            check("底图尺寸不是 0×0",
+                  (bo.get("w") or 0) > 100 and (bo.get("h") or 0) > 100,
+                  f"w={bo.get('w')} h={bo.get('h')}")
+
+            out["baseBox"] = loads(js(
+                "JSON.stringify((function(){"
+                "var rs=[].slice.call(document.querySelectorAll('#map-svg rect.room'));"
+                "var x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity;"
+                "rs.forEach(function(r){var x=+r.getAttribute('x'),y=+r.getAttribute('y'),"
+                "w=+r.getAttribute('width'),h=+r.getAttribute('height');"
+                "if(x<x1)x1=x; if(y<y1)y1=y; if(x+w>x2)x2=x+w; if(y+h>y2)y2=y+h;});"
+                "var el=document.getElementById('map-base');"
+                "var bw=el?(+el.getAttribute('width')||0):0, bh=el?(+el.getAttribute('height')||0):0;"
+                "return {x1:x1,y1:y1,x2:x2,y2:y2,w:bw,h:bh,"
+                "cover:((Math.min(x2,bw)-Math.max(x1,0))*(Math.min(y2,bh)-Math.max(y1,0)))"
+                "/(Math.max(1e-6,(x2-x1)*(y2-y1)))};})())"
+            ))
+            bb = out["baseBox"] or {}
+            check("底图与房间方块有实际重叠（坐标同源）",
+                  (bb.get("cover") or 0) > 0.3,
+                  "cover=%.1f%% bbox=%s,%s-%s,%s img=%sx%s" % (
+                      (bb.get("cover") or 0) * 100, bb.get("x1"), bb.get("y1"),
+                      bb.get("x2"), bb.get("y2"), bb.get("w"), bb.get("h")))
+
+            time.sleep(0.4)
+            grab(os.path.join(SHOTS, "map_base_on.bmp"))
+
+            # 观感约束要能被读出来，不能只靠肉眼看截图
+            out["baseCss"] = loads(js(
+                "JSON.stringify((function(){var el=document.getElementById('map-base');"
+                "if(!el) return {}; var cs=getComputedStyle(el);"
+                "return {opacity:cs.opacity, filter:cs.filter};})())"
+            ))
+            bc = out["baseCss"] or {}
+            check("底图压暗 + 降饱和真的生效（不抢房间方块）",
+                  (float(bc.get("opacity") or 1) < 0.5)
+                  and ("saturate" in str(bc.get("filter") or "")),
+                  str(bc))
+
+            js("var b=document.getElementById('map-base-btn'); if(b) b.click();")
+            time.sleep(0.4)
+            out["baseOffAgain"] = loads(js("JSON.stringify(window.__rwTest.mapBase())"))
+            check("底图能关掉并恢复原状",
+                  bool(out["baseOffAgain"]) and not out["baseOffAgain"].get("on"),
+                  str(out["baseOffAgain"]))
 
             # 与完成度对账
             code = out.get("openTarget")

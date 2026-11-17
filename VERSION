@@ -2,7 +2,7 @@
 # 程序内版本号另有一处：core/__init__.py 的 __version__，两者必须一致。
 # 本文件随源码一起归档，用于标记「这份代码是哪个版本」。
 
-version = 1.1.0
-name = 出口编号与房间卡增强版
-date = 2026-11-07
+version = 1.2.0
+name = 房间实机渲染
+date = 2026-11-18
 channel = stable

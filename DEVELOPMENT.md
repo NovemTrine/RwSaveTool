@@ -41,17 +41,39 @@
 --serve     只起本地静态服务，浏览器调试界面用
 ```
 
-**发版打包**（`2026-11-03` 起）：`build/build_exe.py` 支持 `--out=`，可以直接打到发布目录、不碰 `dist/`：
+**发版打包**（v1.2.0 起的实际流程；`build_exe.py` 用 `--out=` 打到临时目录，不碰 `dist/`）：
 
-```
-.venv/Scripts/python.exe build/build_exe.py         --out=release/RwSaveTool-<日期>/目录版
-.venv/Scripts/python.exe build/build_exe.py --onefile --out=release/RwSaveTool-<日期>/单文件版
+```bash
+# 1) 两个形态
+.venv/Scripts/python.exe build/build_exe.py           --out=build/_rel
+.venv/Scripts/python.exe build/build_exe.py --onefile --out=build/_rel_one
+
+# 2) 组装发布目录（顶层平铺：exe + _internal + onefile + region_data）
+#      build/_rel/RwSaveTool/*                → release/<NAME>/
+#      build/_rel_one/RwSaveTool单文件.exe     → release/<NAME>/RwSaveTool-onefile.exe
+
+# 3) 抹掉区域数据里的本机绝对路径（必须做，见下）
+.venv/Scripts/python.exe build/strip_local_paths.py --target release/<NAME>/region_data
+
+# 4) 随包文本 / 校验清单 / zip，然后验证
+.venv/Scripts/python.exe build/make_release.py
+.venv/Scripts/python.exe build/verify_release.py
 ```
 
-两个命令各产出各自的 exe（目录版含 `_internal`、单文件版只有一个 exe），`region_data` 与 `config.json`
-按「exe 同级」的便携规则各放一份。发布目录里只留 `使用说明.txt` + 两个子目录，然后把整个目录压成 zip
-（`release/RwSaveTool-2026-11-03.zip`，约 27 MB）。`docs/` 里的 `.bmp` 是回归脚本的原始截图（每个 12 MB），
-用完即可删，转出来的 `.png` 才是文档里引用的那份。
+`<NAME>` = `RwSaveTool-v<版本>-win64-<日期>`，由 `VERSION` 推出来（`make_release` / `verify_release`
+都自己算，不用改脚本）。
+
+**为什么第 3 步不能省**：`region_data/*.json` 记着导入时的绝对路径——Steam 库位置、
+创意工坊 `312520/<id>`、`worldDirs` / `roomsDirs` / `map.imagePath` 等，全库约 3300 处。
+发到公网等于把本机目录结构一起发出去，而且对别人**完全没用**（换机器必然失效）。
+脚本把这些字符串换成空串、列表里直接删元素，JSON 结构不动；程序遇到空路径会按
+「底图 / 房间卡不可用，请重新导入」降级（实测 `room_geometry` 返回 `no_file`，不崩），
+房间清单与完成度照常。验收口径：`--check` 输出 0 个文件。
+
+> 副作用（要知道）：发布包里不再指向任何真实目录，所以**作者自己**解压后也要重新导入一次
+> 才有底图和房间卡——和别的玩家一样。
+
+`docs/` 里的 `.bmp` 是回归脚本的原始截图（每个 12 MB），用完即可删，转出来的 `.png` 才是文档里引用的那份。
 
 ---
 
@@ -66,7 +88,10 @@ RwSaveTool/
 │  ├─ mod_importer.py    模组目录只读导入器
 │  ├─ region_store.py    导入缓存读写、来源装饰、底图可用性、源指纹
 │  ├─ sources.py         来源注册表（Original / Downpour / Watcher / 各模组）
-│  ├─ translations.py    自定义译名（覆盖内置中文名）
+│  ├─ translations.py   自定义译名（覆盖内置中文名）
+│  ├─ room_geo.py        房间 `.txt` 解析（格子 / 摄像机 / 物件）
+│  ├─ room_render.py     房间实机渲染内核（PNG 编解码 + 着色 + 水面 + 空洞，零第三方依赖）
+│  ├─ room_cache.py      实机图的磁盘缓存（版本作废、总量淘汰、按区域清除）
 │  └─ bridge.py          暴露给前端的 API
 ├─ ui/rw_gui.html        界面（单文件：样式 / 解析器 / 渲染全内联；含剧情分值表数据块）
 ├─ data/region_map.json  100 条区域缩写对照表（内置）
@@ -278,6 +303,21 @@ RwSaveTool/
 
 可自证：导入前后对模组目录做 `路径+大小+mtime` 快照比对，应完全一致。
 
+### 4.1 房间实机渲染（v1.2）的只读边界
+
+渲实机图要读 `_N.png` 地形纹理、`palettes/palette*.png`、`noise.png`、`effectcolors.txt`，
+全部在游戏安装目录 / 模组目录里**只读打开**：
+
+| 对象 | 行为 |
+|---|---|
+| 地形纹理 `<房间>_<N>.png` | 只读解码进内存，不解压到磁盘、不复制 |
+| 调色板 / 噪声 / 特效色 | 只读 |
+| 输出 | 只有 PNG 字节；落盘的只有 `region_data/_roomcache/`（纯缓存） |
+| 发布包 | **不含任何游戏图**，体积不因本功能变大 |
+
+EULA 的边界是 `publish / copy`：本地读、本地渲、不随包分发，属于允许范围；
+从 atlas 抽 sprite 做装饰属于「copy」，已永久关闭（见 CHANGELOG §七）。
+
 ---
 
 ## 5. 自测
@@ -310,8 +350,12 @@ cd _test && python -m http.server 8801
 # 8) 区域地图（矢量 / 缩放 / 未探索清单）+ 全域探索总览回归
 .venv\Scripts\python.exe build\check_map.py
 
-# 9) 房间布局卡回归（读 .txt 地形网格 → 画布；含像素级抽样对账）
+# 9) 房间布局卡回归（读 .txt 地形网格 → 画布；含像素级抽样对账、实机图的 A/B 档与缓存清理入口）
 .venv\Scripts\python.exe build\check_room.py
+
+# 9b) 实机渲染内核（不需要开窗口）：出图 + 数值对表 + 内容级断言（空洞取色 / 水面范围 / 裁块一致）
+.venv\Scripts\python.exe build\check_render.py --room SL_F01 --room GW_B08 --px 8
+#     --out <目录> 保存每次的 PNG；--px 指定密度；--no-water 关闭水面
 
 # 10) 房间关系图：节点/边对账、开场"一点摊开"、节点尺寸、边长极差、播完不消失、播放、悬停、
 #     拖拽（默认不固定 / 开启后固定）、缩放、
@@ -369,6 +413,10 @@ SMOKE OK
 | 各战役统计合计 | 末行「全部 23 个战役」`199:42:07` / `60.5%` / `≈ 24,804` |
 | 区域表宽度 | 1400px 窗口下 `scrollWidth - clientWidth = 0`（无横向滚动条） |
 | 译名 | 改一条 → 击杀页立刻变；「恢复本类默认」后回到内置名 |
+| 实机图（GW_B08 · White） | `19 px/tile`（A 档 = 1400×dpr）；L2 命中 1.4–2.1 ms |
+| 实机图（CC_SUMP05 放大 8×） | 整图 11 px/tile → 裁块 **20 px/tile**（素材上限）；裁块约 29×22 格；不落盘 |
+| 实机图失败降级 | 缺 `_N.png` 时保留矢量 + 角标「没有地形纹理」，悬停给中文解释，不弹窗 |
+| 房间渲染缓存 | 上限 200 MB；点「清理」后 0 张，**当前画面仍在**（不清 `rmLive`），按钮置灰 |
 
 ---
 
@@ -396,6 +444,86 @@ python -c "d=open('启动.bat','rb').read(); print(d.count(b'\r\n'), d.count(b'\
 
 ---
 
+## 6.2 房间实机渲染：改之前必读
+
+### 模块职责
+
+| 文件 | 职责 |
+|---|---|
+| `core/room_render.py` | 全部渲染逻辑：PNG 编解码、摄像机拼接、着色、水面、空洞填充、缓存键 |
+| `core/room_cache.py` | 只管磁盘：键 → 路径、读写、版本作废、总量淘汰。**不 import 渲染器**（避免循环依赖） |
+| `core/bridge.py` | `room_render` / `room_render_info` / `room_prefetch` / `room_cache_info` / `room_cache_clear` |
+| `ui/rw_gui.html` | 开关、异步请求、L1 缓存、预取调度、裁块叠图、失败降级 |
+
+### 八步管线（函数对应）
+
+| 步 | 做什么 | 函数 |
+|---|---|---|
+| 1 | 定位房间 `.txt`（与矢量图同一份） | `room_geo.find_file()` |
+| 2 | 读摄像机、水面高度、`WaterFront` | `_parse_cameras()` / `_room_header()` |
+| 3 | 解码并拼接 `_N.png` | `_stitch()`（`crop` 时只解码相交的摄像机） |
+| 4–5 | 逐像素解 `LevelTexture` 并着色 | `_shade()` |
+| 6 | 叠水面 | `_water()` |
+| 7 | 补摄像机拍不到的空洞 | `_fill_void()` |
+| 8 | 编码 PNG | `encode_png()` |
+
+**三条隐规则**
+
+1. `_sample_maps()` 是「输出像素 → 源像素」的唯一映射表，`_shade` / `_water` / `_fill_void`
+   必须共用它。自己写 `int(oy * 20 / px)` 在 px 不能整除 20 时会错开 1–2 行。
+2. `room_geo.load()` 的 `cells` 是**行优先** `cells[y * w + x]`。写成 `cells[x * h + y]` 就是
+   整个地形上下镜像——这个 bug 曾经让 838 间房出现空洞。
+3. `crop` 只裁输出，画布仍是整间尺寸；`_fill_void` 在这种情况下按**摄像机矩形**判断覆盖，
+   不能再信 `canvas.covered`（被跳过的机没有像素，会把半间房当成空洞）。
+
+### 缓存键与版本
+
+```python
+key = (room_path, st_mtime_ns, st_size, layer_id, slugcat.lower(), px, fit, sky, water)
+```
+
+- 键里带 `slugcat`：同一间房在不同角色战役下可能不同，去掉会串图；
+- 键里带 `fit`：不同屏幕密度算出来的密度不同，去掉会拿到低清图；
+- 磁盘文件名格式 `房间__角色__px__fit.png`，旁边一个 `.json` 存校验信息；
+- **`CACHE_VER`（`core/room_cache.py`）是唯一的总开关**：改了任何会影响像素的东西
+  （着色、水面、空洞、剪裁）都必须 `+1`，否则旧图会继续命中，表现为「改了没效果」；
+- `crop` **不进缓存**：裁块只进进程内存（`rmLiveHiCache`，最多 6 张），不落盘。
+
+### 前端状态
+
+| 状态 | 含义 |
+|---|---|
+| `rmLive` | 当前房间的整图（`{ok,img,w,h,px}` 或 `{ok:false}`） |
+| `rmLiveCache` / `rmLiveOrder` / `rmLiveBytes` | L1 整图，12 张 / 48 MB 双限额 |
+| `rmLiveHi` / `rmLiveHiCache` | 放大后的高密度裁块，6 张 / 24 MB，**不落盘** |
+| `rmLiveSeq` / `rmLiveHiSeq` | 请求代号，回包不符就丢（防串图） |
+| `rmCanvasState()` | 测试钩子用的当前视图状态 |
+
+铁律：`openRoomCard()` 里**绝不 await** 渲染；位图只在地形层；失败只降级成角标。
+
+### 性能基线（改动后拿这个对）
+
+| 场景 | 期望 |
+|---|---|
+| L1 命中 | ~0 ms |
+| L2 命中 | 1.4–2.1 ms |
+| 冷渲染 48 tile 房间 | 0.4–1 s |
+| 冷渲染 196 tile 房间 | 4–5.6 s |
+| B 档裁块（70×40 格 @ 20 px） | ~1.4 s |
+| 预取被打断 | 3909 → 1704 ms（约 0.4 s 内让路） |
+
+### 改完之后必须跑
+
+```bash
+.venv\Scripts\python.exe build\check_render.py --room SL_F01 --room SL_C12 --room GH_D04 --room GW_B08 --room CC_SUMP05 --px 8
+.venv\Scripts\python.exe build\check_room.py      # 85 项，含缓存清理入口与 B 档裁块
+```
+
+`check_render` 的**内容级断言**是这套东西唯一的真护栏：空洞取色、水面范围与水平度、
+裁块与整图逐像素一致。只跑「画没画」的断言，颜色全错也会绿。
+
+---
+
 ## 7. 已知限制
 
 1. 不写回存档（缺 SALT，无法重算 MD5）。
@@ -420,3 +548,10 @@ python -c "d=open('启动.bat','rb').read(); print(d.count(b'\r\n'), d.count(b'\
 14. **未收录生物按 0 分**：模组生物一律如此，击杀页页脚会显示「N 种未收录 / 共 N 次」，不要当成漏算。
 15. **业力是 0 基转 1 基**：界面对 `KARMA` 与 `KARMACAP` 各 +1 并夹在 1~10；`REINFORCEDKARMA` 只作为「强化」标记展示，不改变数值。
 16. **Top N 是全局配置**：换角色时按该角色物种数夹取，拖到超出范围的取值不会写回配置。
+17. **实机图的空洞是补出来的**：摄像机拍不到的长条用周边同类色填（保留轮廓），放大 200% 以上
+    能看出与真实地形的差异；`_fill_void` 只补「完全没有像素」的区域。
+18. **水面是直线**：v1.2 起所有房间统一成「整幅半透明笼罩」，水线只随 `WaveAmplitude` 摆 ±几 px，
+    不做折射、水下后处理与动画；整间泡在水里的房间会整幅被染一层水色（刻意）。
+19. **实机图清晰度受素材上限约束**：相机 1400×800 覆盖 70×40 tile，即 20 px/tile 封顶；
+    48 tile 的小房间在 100% 显示时就已经超过，除超分外无解（不做超分）。
+20. **实机图依赖本机游戏素材**：调色板 / 噪声缺失时只能在房间卡上画矢量，不显示「实机」开关。

@@ -648,6 +648,15 @@
     height:clamp(280px,58vh,620px);background:var(--rm-air);touch-action:none}
   .rm-stage canvas{display:block;cursor:grab}
   .rm-stage.dragging canvas{cursor:grabbing}
+  /* 实机视图（V1.2 · M2）：位图没到位时左下角一个小旗标。放左边是因为右下角被
+     缩放条占了。绝不遮挡画布、绝不弹窗——渲染只是附加图层，失败了不该打断用户。 */
+  .rm-live-flag{position:absolute;left:10px;bottom:10px;z-index:6;display:none;
+    align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:11px;
+    border:1px solid var(--line);pointer-events:none;color:var(--dim);
+    background:color-mix(in srgb,var(--surface) 82%,transparent);
+    box-shadow:0 4px 14px rgba(0,0,0,.18)}
+  .rm-live-flag.on{display:flex}
+  .rm-live-flag.err{color:#e2746c;border-color:color-mix(in srgb,#e2746c 45%,var(--line))}
   .rm-legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:11.5px;
     color:var(--muted);margin:10px 2px 0}
   .rm-legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;
@@ -755,6 +764,14 @@
   .sort-btn.on:hover{color:var(--on-accent);border-color:var(--accent)}
   .sort-btn .dir{opacity:.75;margin-left:4px}
 
+  /* 房间渲染缓存：占用 + 清理（区域数据弹窗顶部一行） */
+  .cache-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;
+    padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);
+    font-size:12px;color:var(--muted)}
+  .cache-bar b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+  .cache-bar .btn{padding:4px 10px;font-size:12px}
+  .cache-bar .cb-ok{color:#6ec37a}
+
   /* 完成度口径切换 */
   .modebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:9px;
     padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
@@ -845,6 +862,13 @@
      而不是漂在中间的一条细缝 */
   .map-stage .map-sheet{fill:var(--rm-sheet);stroke:var(--rm-line);stroke-width:.8;
     vector-effect:non-scaling-stroke;opacity:.9}
+  /* 底图层（P0）：游戏自带的 map_<reg>.png，1px=1tile，与房间方块同一坐标系。
+     只当背景参考——降饱和 + 压暗，免得和小方块抢视线；淡入避免"啪"地出现。
+     刻意不用 image-rendering:pixelated：放大时平滑模糊比硬块更像"底图"。 */
+  .map-stage .map-base{opacity:0;transition:opacity .24s ease;pointer-events:none;
+    filter:saturate(.55)}
+  .map-stage .map-base.on{opacity:.42}
+  html[data-theme="light"] .map-stage .map-base.on{opacity:.32}
   .map-stage.zoomed svg{cursor:move}
   .map-stage.dragging svg{cursor:grabbing}
   .map-stage.dragging{user-select:none}
@@ -1153,6 +1177,10 @@
         <button id="rm-exclude" class="btn ghost rm-locate" type="button"
           title="这间房当前角色正常情况下去不了：勾上就把它从完成度分母里剔掉">不可达</button>
         <button id="rm-graph" class="btn ghost rm-locate" type="button" title="在区域拓扑图里定位这间房">拓扑定位</button>
+        <div class="rm-mark" id="rm-style" hidden title="画布画法：矢量＝格子示意图（快、能交互）；实机＝按游戏着色器算出的地形渲染图">
+          <button type="button" data-rmstyle="vector">矢量</button>
+          <button type="button" data-rmstyle="live">实机</button>
+        </div>
         <button id="rm-full" class="btn ghost rm-locate" type="button" title="全屏 / 紧凑（F）">全屏</button>
         <button id="rm-palette" class="btn ghost rm-locate" type="button" title="改成自己看得顺眼的颜色">配色</button>
         <button id="rm-locate" class="btn ghost rm-locate" type="button">在地图上定位</button>
@@ -1163,6 +1191,7 @@
       <div class="rm-main">
         <div class="rm-stage" id="rm-stage">
           <canvas id="rm-canvas"></canvas>
+          <div class="rm-live-flag" id="rm-live-flag"></div>
           <div class="map-zoom" id="rm-zoom">
             <button type="button" data-rzoom="out" title="缩小">−</button>
             <span id="rm-zoom-pct">100%</span>
@@ -2541,6 +2570,14 @@ function parseSave(raw, onProgress){
   /* 房间卡是否全屏：默认全屏（P4 起）。右栏清单只在全屏时可见，默认紧凑会让
      「出口跳转 / 悬停高亮」没有入口；config.ui.roomCardFull 有值时以配置为准。 */
   state.roomCardFull = true;
+  /* 房间卡的画法：vector＝格子示意图（现状）｜live＝实机渲染图（V1.2）。
+     默认矢量——实机图要 0.4~3.7 s 才算得出来，不打招呼就换成它等于让每间房都变慢。
+     config.ui.roomCardStyle 有值时以配置为准（已在 DEFAULT_UI 登记）。 */
+  state.roomCardStyle = 'vector';
+  /* 区域地图底图（P0）：默认关。底图是游戏自带的 map_<reg>.png（1px = 1tile，
+     与房间方块同一坐标系），只作背景参考，不替代矢量方块。
+     config.ui.mapBase 有值时以配置为准（已在 DEFAULT_UI 登记）。 */
+  state.mapBase = false;
   state.muFilter = 'unseen';   /* 地图弹窗里的房间号清单标签：all / unseen / seen */
   state.sources = [];          /* 来源清单（Original / Downpour / Watcher / 各模组） */
   state.sourcePresets = ['Original','Downpour','Watcher','Mod'];
@@ -4983,6 +5020,7 @@ function parseSave(raw, onProgress){
       '<button class="btn ghost" type="button" id="m-import">导入模组目录…</button>' +
       '<button class="btn ghost" type="button" id="m-open-dir">打开缓存目录</button>' +
       '</div>' +
+      '<div class="cache-bar" id="m-room-cache"><span class="cb-txt">房间渲染缓存 · 统计中…</span></div>' +
       '<div class="format-note" style="margin-bottom:12px">同一区域可以有多个<b>来源</b>（原版 / Downpour / Watcher / 各模组），' +
       '每个来源独立保存、互不覆盖。点来源名可以<b>点亮或熄灭</b>它，只有点亮的来源参与完成度计算；' +
       '只有地图没有 world 文件的来源会标「仅地图」，不参与分母。</div>' +
@@ -5005,6 +5043,65 @@ function parseSave(raw, onProgress){
     modalBody.innerHTML = head + body;
     bindRegionActions();
     showGameHint();
+    rmCacheShow();
+  }
+
+  /* ---- 房间渲染缓存：占用统计 + 清理 ----
+     房间图都是「渲一次、存一盘」的，看过的房间越多占得越多（上限 200 MB，超了按最旧淘汰）。
+     给一个看得见数字的清理入口，省得用户去翻 region_data/_roomcache 手动删。
+     清完必须把前端的 L1（整图 12 张）与裁块缓存一起倒掉——否则界面上还是旧图，
+     用户会以为「点了没用」。 */
+  function rmCacheShow(){
+    var box = $('m-room-cache');
+    if (!box) return;
+    if (!hasBridge()){
+      box.innerHTML = '<span class="cb-txt">房间渲染缓存 · 浏览器预览模式下不可用</span>';
+      return;
+    }
+    bridgeCall('room_cache_info').then(function(res){
+      var el = $('m-room-cache');
+      if (!el) return;
+      if (!res || !res.ok){
+        el.innerHTML = '<span class="cb-txt">房间渲染缓存 · 读不到占用（' + esc(String((res && res.error) || '未知')) + '）</span>';
+        return;
+      }
+      var mb = (res.bytes || 0) / 1048576;
+      var n = res.files || 0;
+      el.innerHTML = '<span class="cb-txt">房间渲染缓存 · <b>' +
+        (mb < 0.1 ? '不足 0.1' : mb.toFixed(1)) + ' MB</b> · ' + n + ' 张' +
+        '<span style="opacity:.6">（上限 ' + Math.round((res.limit || 0) / 1048576) + ' MB，超出自动淘汰最旧）</span></span>' +
+        '<button class="btn ghost" type="button" id="m-room-clear"' + (n ? '' : ' disabled') + '>清理</button>';
+      var btn = $('m-room-clear');
+      if (btn) btn.addEventListener('click', function(){ rmCacheClear(n); });
+    }).catch(function(err){
+      var el = $('m-room-cache');
+      if (el) el.innerHTML = '<span class="cb-txt">房间渲染缓存 · 读不到占用（' +
+        esc(String((err && err.message) || err)) + '）</span>';
+    });
+  }
+
+  function rmCacheClear(files){
+    confirmBox('清理房间渲染缓存',
+      '将删除 ' + (files || 0) + ' 张已缓存的房间图（只删 _roomcache，不动导入的区域数据）。' +
+      '清理后再次打开房间需要重新渲染一次，之后照旧很快。',
+      '清理', function(){
+        bridgeCall('room_cache_clear').then(function(res){
+          if (!res || !res.ok){
+            toast('清理失败：' + String((res && res.error) || '未知错误'));
+            return;
+          }
+          /* 前端两级缓存一起清：整图 L1 + 放大裁块。
+             当前正显示的这张**故意保留**（`rmLive` 不动）——清了又立刻重渲一遍，
+             等于白清；用户看到的效果是「空间回来了，画面没变」。 */
+          rmLiveCache = {}; rmLiveOrder = []; rmLiveBytes = 0;
+          rmHiDrop();
+          drawRoom();
+          rmCacheShow();
+          toast('已清理 ' + (res.removed || 0) + ' 张房间图');
+        }).catch(function(err){
+          toast('清理失败：' + String((err && err.message) || err));
+        });
+      });
   }
 
   function showGameHint(){
@@ -5612,6 +5709,8 @@ function parseSave(raw, onProgress){
         '<span class="mlabel">地图层</span>' +
         '<button class="sort-btn on" type="button" data-ml="all">全部 <b>' + rooms.length + '</b></button>' +
         layerBtns +
+        '<button class="sort-btn' + (state.mapBase ? ' on' : '') + '" id="map-base-btn" type="button" ' +
+          'title="叠一层游戏自带的区域底图（只作背景参考，房间方块仍是主角）">▤ 底图</button>' +
         '<button class="btn map-graph-btn" id="map-graph" type="button" title="把整片区域的房间画成区域拓扑图">◈ 区域拓扑</button>' +
         '<span class="map-hint">滚轮缩放 · 拖拽平移 · 双击房间居中</span>' +
       '</div>' +
@@ -5620,6 +5719,10 @@ function parseSave(raw, onProgress){
           '" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">' +
           '<rect class="map-sheet" id="map-sheet" x="' + vbAll[0].toFixed(1) + '" y="' + vbAll[1].toFixed(1) +
             '" width="' + vbAll[2].toFixed(1) + '" height="' + vbAll[3].toFixed(1) + '" rx="8"/>' +
+          /* 底图（P0）：整张 map_<reg>.png 铺在 (0,0)-(W,H)。房间坐标本来就是底图像素坐标，
+             所以不需要任何换算；W/H 由桥接返回后再写进来，没加载时是 0×0，不影响布局。 */
+          '<image class="map-base" id="map-base" x="0" y="0" width="0" height="0" ' +
+            'preserveAspectRatio="none" href=""/>' +
           '<g class="links">' + linkHTML + '</g>' +
           '<g class="rooms">' + roomHTML + '</g>' +
         '</svg>' +
@@ -5654,6 +5757,68 @@ function parseSave(raw, onProgress){
           openMap(code);
         });
     });
+
+    /* ---- 底图层（P0）--------------------------------------------------------
+       底图是游戏自带的 map_<reg>.png，1px = 1tile，与房间方块共用同一坐标系，
+       所以整张图铺在 (0,0)-(W,H) 就自动对齐，不需要任何缩放换算。
+       加载全程异步、不 await：图没到之前这里什么都不做，界面照常可用。 */
+    var baseEl = $('map-base');
+    var baseBtn = $('map-base-btn');
+    var baseCache = window.__rwMapBase || (window.__rwMapBase = {});
+    var baseSeq = 0;
+
+    function mapBasePaint(url, w, h){
+      if (!baseEl) return;
+      if (!url || !(w > 0) || !(h > 0)){
+        baseEl.removeAttribute('href');
+        baseEl.classList.remove('on');
+        return;
+      }
+      /* 只有"完全不重叠"才判定为坐标系不同源、干脆不画。
+         部分覆盖是正常的：模组/Downpour 层会把房间铺到底图范围之外（例如 GW 的
+         moreslugcats 层 bbox 2012 宽，而 map_gw.png 只有 1574），那部分没底图可叠，
+         画出来只是"边缘没有背景"，不影响对齐。 */
+      var b = mapBounds(rooms);
+      if (b && (b.x >= w || b.y >= h || b.x + b.w <= 0 || b.y + b.h <= 0)){
+        console.warn('[map-base] 底图与房间坐标完全不重叠，已跳过', b, w, h);
+        baseEl.removeAttribute('href');
+        baseEl.classList.remove('on');
+        return;
+      }
+      baseEl.setAttribute('href', url);
+      baseEl.setAttribute('width', w);
+      baseEl.setAttribute('height', h);
+      baseEl.classList.add('on');
+    }
+
+    function mapBaseApply(){
+      if (!baseEl) return;
+      if (!state.mapBase){ baseEl.classList.remove('on'); return; }
+      var hit = baseCache[code];
+      if (hit){ mapBasePaint(hit.url, hit.w, hit.h); return; }
+      if (!hasBridge()) return;
+      var seq = ++baseSeq;
+      /* bridgeCall 是位置参数展开（见 L2566），不能塞成一个对象 */
+      bridgeCall('map_image', code, layerId || null, sets.variant || 'normal')
+        .then(function(r){
+          if (seq !== baseSeq || !r || !r.ok || !r.dataUrl) return;   /* 已经换区域了 */
+          var keys = Object.keys(baseCache);
+          if (keys.length >= 8) delete baseCache[keys[0]];            /* 只留最近 8 个区 */
+          baseCache[code] = { url: r.dataUrl, w: r.width || 0, h: r.height || 0 };
+          if (state.mapBase) mapBasePaint(r.dataUrl, baseCache[code].w, baseCache[code].h);
+        })
+        .catch(function(){});
+    }
+
+    if (baseBtn && baseEl){
+      mapBaseApply();
+      baseBtn.addEventListener('click', function(){
+        state.mapBase = !state.mapBase;
+        baseBtn.classList.toggle('on', state.mapBase);
+        mapBaseApply();
+        if (hasBridge()) bridgeCall('save_config', { ui: { mapBase: state.mapBase } }).catch(function(){});
+      });
+    }
 
     var curLayer = 'all';
 
@@ -7954,10 +8119,47 @@ function parseSave(raw, onProgress){
      算清楚：优先按坐标匹配十字；条数相同才退化成按序号；都对不上就标 ok=false ——
      那几行悬停时不高亮，绝不画一个悬空的徽章。 */
   var rmExitLinks = [];
+  var rmExitTargets = [];   /* 第 i 号出口指向的房间名（预取用；无去向是 null） */
   var rmHoverExit = -1;   /* 当前悬停的出口下标，-1 = 没有 */
   var rmOrder = [], rmIndex = -1;   /* 上一间/下一间：顺序＝地图弹窗当前标签的清单 */
   var rmShowClimb = true;      /* 「可攀爬墙」底色开关：大片底色，能一键关掉 */
   var rmView = { scale: 1, fit: 1, tx: 0, ty: 0, cw: 0, ch: 0, dpr: 1 };
+
+  /* ---------------- 实机视图（V1.2 · M2） ----------------
+     矢量图回答「哪里能走」，实机图回答「这间房我有没有印象」。后者由后端
+     core/room_render.py 照游戏着色器算出来，前端只负责「发出去 → 回来贴上去」。
+
+     四条铁律：
+       1. openRoomCard 里**绝不 await 渲染**，否则开卡时间直接翻几倍；
+       2. 位图只能盖住地形，出口十字 / 编号徽章 / 杆子 / 管道永远画在它上面；
+       3. 没算完就继续显示矢量——任何时刻都不空屏、不抖动；
+       4. 失败只是「少一层」，保留矢量 + 角落里一个感叹号，绝不弹窗。 */
+  var rmStyle = 'vector';        /* 与 state.roomCardStyle 同步；drawRoom 读这个 */
+  var rmLive = null;             /* {ok, img, w, h, px, ms, cached} | {ok:false} */
+  var rmLiveSeq = 0;             /* 每次开卡 +1；回包时代号不符就丢弃（防串图） */
+  var rmLiveLayer = null;        /* 当前卡的层 id：现在恒为 null，进缓存键防将来串图 */
+  var rmLiveFade = 1;            /* 淡入进度 0..1 */
+  var rmLiveCache = {};          /* L1：本次会话已渲过的图 */
+  var rmLiveOrder = [];          /* L1 的 LRU 顺序，上限 12 间 */
+  var rmLiveBytes = 0;           /* L1 已占的解码内存（w×h×4），按字节兜底 */
+  var rmLiveCapable = {};        /* 区域 → 素材在不在（探测一次就够） */
+  var RM_LIVE_BYTES_MAX = 48 * 1024 * 1024;   /* 一张 2200×700 ≈ 6 MB，48 MB 约 8 张 */
+  var rmPrefetchTimer = 0;       /* 预取延迟计时器（开卡后 300 ms 才动，别抢首屏） */
+
+  /* ---- B 档：放大后按视口裁剪补细节 ----
+     整图是按「卡片宽度」取的密度（A 档：1400×dpr），宽房间只有 11–19 px/tile，
+     放大到 150% 以上就开始糊。而在放大时，屏幕上真正看得见的只有几十格——
+     让后端只渲这一块，同样的带宽就能给到 20 px/tile（素材上限，再高是插值放大）。
+     裁块按 tile 坐标叠回去，与整图同位置逐像素一致（后端有断言守着）。 */
+  var rmLiveHi = null;           /* {img, px, tx, ty, tw, th}：当前裁块（tile 坐标） */
+  var rmLiveHiKey = '';          /* 裁块的身份：房间 + 密度 + 矩形 */
+  var rmLiveHiSeq = 0;           /* 裁块请求代号；回包不符就丢（和整图那套一样防串图） */
+  var rmLiveHiTimer = 0;         /* 缩放停滞 220 ms 才发请求，拖拽时不许刷屏 */
+  var rmLiveHiCache = {};        /* 本次会话的裁块，最多 6 张（平移回原位就秒出） */
+  var rmLiveHiOrder = [];
+  var rmLiveHiBytes = 0;         /* 裁块解码后的内存，上限 24 MB（与 L1 的 48 MB 分开算） */
+  var RM_HI_PX_MAX = 20;         /* 相机 1400×800 覆盖 70×40 tile → 素材上限 20 px/tile */
+  var RM_HI_SIDE_MAX = 2048;     /* 单边像素上限：再大传 data URL 就肉疼了 */
 
   function roomCampaignInfo(code, name){
     var c = currentCampaign();
@@ -8113,6 +8315,7 @@ function parseSave(raw, onProgress){
       if (note) note.textContent = '';
       rmSide = { rows: 0, layer: null, truncated: false };
       rmExitLinks = [];
+      rmExitTargets = [];
       rmHoverExit = -1;
       return;
     }
@@ -8120,6 +8323,7 @@ function parseSave(raw, onProgress){
     var truncated = eff.room.exitNumbering === 'truncated';
     rmHoverExit = -1;
     rmExitLinks = rmBuildExitLinks(ex);
+    rmExitTargets = ex.map(function(e){ return (e && e.to) ? String(e.to) : null; });
     var noCell = 0;
     var html = '';
     for (var i = 0; i < ex.length; i++){
@@ -8200,6 +8404,13 @@ function parseSave(raw, onProgress){
     if (!roomModal) return;
     var token = ++rmToken;
     rmCode = code; rmRoom = name;
+    /* 换房间就把实机图状态清掉：旧图属于上一间房，留着会先闪一下再被换掉。
+       序号 +1 让在途的渲染回包自动作废（它已经在算的那间房用户已经不要了）。 */
+    rmLiveLayer = layerId || null;
+    rmLiveSeq++;
+    rmLive = null;
+    rmLiveFade = 1;
+    rmHiDrop();                    /* 裁块属于上一间房，一起作废 */
     /* from 只在「从出口清单跳过来」时传；上一间/下一间、地图点选一律清空，
        免得副标题挂着上次的来路 */
     rmFrom = from || null;
@@ -8215,6 +8426,7 @@ function parseSave(raw, onProgress){
     if ($('rm-exit-note')) $('rm-exit-note').textContent = '';
     rmSide = { rows: 0, layer: null, truncated: false };
     rmExitLinks = [];
+    rmExitTargets = [];
     rmHoverExit = -1;
     roomModal.hidden = false;
     rmApplyFull(state.roomCardFull, true);
@@ -8232,8 +8444,9 @@ function parseSave(raw, onProgress){
   function closeRoomCard(){
     if (!roomModal) return;
     roomModal.hidden = true;
+    if (rmPrefetchTimer){ clearTimeout(rmPrefetchTimer); rmPrefetchTimer = 0; }
     rmData = null; rmRuns = null; rmMarks = null;
-    rmHoverExit = -1; rmExitLinks = [];
+    rmHoverExit = -1; rmExitLinks = []; rmExitTargets = [];
   }
 
   function roomCardError(res){
@@ -8363,6 +8576,14 @@ function parseSave(raw, onProgress){
 
     renderRoomSide(code, name);
     bindRoomCardOnce();
+    /* 实机视图：先问「这套素材渲不渲得出来」（几次 isfile，很便宜），
+       再决定要不要真的去算。注意这里**没有 await**——rmMaybeRender 发出去就返回，
+       开卡时间与有没有实机图完全无关。 */
+    rmStylePaint();
+    rmProbeStyle();
+    if (rmStyle === 'live') rmMaybeRender();
+    else rmFlag('', '');
+    rmSchedulePrefetch();
     rmEnsureSize(0);
     /* 弹窗刚取消 hidden 时，元素尺寸可能还没算出来（clientWidth = 0），
        下一帧再量一次；仍然为 0 就按 30ms 轮询几轮。 */
@@ -8404,6 +8625,7 @@ function parseSave(raw, onProgress){
     rmView.tx = (rmView.cw - px * fit) / 2;
     rmView.ty = (rmView.ch - py * fit) / 2;
     drawRoom();
+    rmHiSchedule();          /* 窗口尺寸变了 = 需要的密度也变了 */
   }
 
   function updateRoomPct(){
@@ -8422,6 +8644,326 @@ function parseSave(raw, onProgress){
       : Math.min(m, Math.max(rmView.ch - py - m, rmView.ty));
   }
 
+  /* ---- 实机视图：请求 / 缓存 / 淡入（没有任何一处 await，全是回调） ---- */
+
+  function rmSlugcat(){ return (currentCampaign() || {}).slugcat || ''; }
+
+  /* 缓存键必须带角色：`<room>_settings-<角色>.txt` 会换 Palette，
+     圣徒眼里的 cc_a02 和幸存者眼里的不是一张图（计划书 §4.9）。 */
+  /* 位图密度按**设备像素**算，不是 CSS 像素。
+     卡片宽度的上限（1400）是 CSS 像素，但画布 backing store 乘了 dpr，所以 dpr=1.5
+     时真正需要的是 2100 设备像素。以前只按 CSS 算，宽房间被压到 13 / 7 px/tile，
+     放大就糊（计划书 §18 A 档）。渲染端本来就有 20 px/tile 的上限，所以窄房间不会
+     因此变大。 */
+  function rmLiveFit(){
+    return Math.round(1400 * (window.devicePixelRatio || 1));
+  }
+
+  function rmLiveKey(code, room){
+    /* fit 进键：把窗口拖到另一块 dpr 不同的屏幕上时，旧位图不该被当成命中 */
+    return [code, room, rmLiveLayer || '', rmSlugcat(), rmLiveFit()].join('|');
+  }
+
+  function rmLiveRemember(key, rec){
+    /* 按字节算账而不只是按张数：密度一提上来，一张 2200×700 解码后就是 6 MB，
+       12 张能吃掉 70 MB。两个上限取严的那个。 */
+    rec.bytes = (rec.w || 0) * (rec.h || 0) * 4;
+    var old = rmLiveCache[key];
+    if (old && old.bytes) rmLiveBytes -= old.bytes;
+    rmLiveCache[key] = rec;
+    rmLiveBytes += rec.bytes;
+    var i = rmLiveOrder.indexOf(key);
+    if (i >= 0) rmLiveOrder.splice(i, 1);
+    rmLiveOrder.push(key);
+    while (rmLiveOrder.length > 12 || (rmLiveBytes > RM_LIVE_BYTES_MAX && rmLiveOrder.length > 1)){
+      var dead = rmLiveOrder.shift();
+      var gone = rmLiveCache[dead];
+      if (gone && gone.bytes) rmLiveBytes -= gone.bytes;
+      delete rmLiveCache[dead];
+    }
+  }
+
+  /* ---------------- B 档：视口裁块 ---------------- */
+
+  /* 屏幕当前需要多少 px/tile。`rmView.scale` 是 CSS px/tile，乘 dpr 才是设备像素。 */
+  function rmHiWantPx(){
+    var need = Math.round(rmView.scale * (rmView.dpr || 1));
+    if (need < 4) need = 4;
+    return Math.min(RM_HI_PX_MAX, need);
+  }
+
+  /* 裁块范围：视口覆盖的 tile 矩形，四周各留 4 格余量（平移几格不用重渲）。 */
+  function rmHiRect(px){
+    if (!rmData) return null;
+    var s = rmView.scale;
+    if (!(s > 0)) return null;
+    var pad = 4;
+    var tx0 = Math.floor((0 - rmView.tx) / s) - pad;
+    var ty0 = Math.floor((0 - rmView.ty) / s) - pad;
+    var tx1 = Math.ceil((rmView.cw - rmView.tx) / s) + pad;
+    var ty1 = Math.ceil((rmView.ch - rmView.ty) / s) + pad;
+    tx0 = Math.max(0, tx0); ty0 = Math.max(0, ty0);
+    tx1 = Math.min(rmData.w, tx1); ty1 = Math.min(rmData.h, ty1);
+    if (tx1 - tx0 < 2 || ty1 - ty0 < 2) return null;
+    return [tx0, ty0, tx1, ty1];
+  }
+
+  function rmHiCapRect(rect, px){
+    /* 单边超过 RM_HI_SIDE_MAX 就先降密度：带宽比清晰度更先撑不住 */
+    var w = (rect[2] - rect[0]) * px, h = (rect[3] - rect[1]) * px;
+    var over = Math.max(w / RM_HI_SIDE_MAX, h / RM_HI_SIDE_MAX, 1);
+    if (over > 1.0001) px = Math.max(4, Math.floor(px / over));
+    return px;
+  }
+
+  function rmHiDrop(){
+    if (rmLiveHiTimer){ clearTimeout(rmLiveHiTimer); rmLiveHiTimer = 0; }
+    rmLiveHiSeq++;
+    rmLiveHi = null;
+    rmLiveHiKey = '';
+    rmLiveHiCache = {};
+    rmLiveHiOrder = [];
+    rmLiveHiBytes = 0;
+  }
+
+  function rmHiRequest(){
+    if (rmStyle !== 'live' || !rmData || !rmLive || !rmLive.ok || !rmLive.img) return;
+    if (!hasBridge()) return;
+    var px = rmHiWantPx();
+    var full = rmLive.px || 20;
+    if (px <= full + 0.5) return;                     /* 整图已经够密，白渲 */
+    var rect = rmHiRect(px);
+    if (!rect) return;
+    /* 裁块超过整间的 80% 就别裁了：省不下多少，还会和整图差一份缓存 */
+    var area = (rect[2] - rect[0]) * (rect[3] - rect[1]);
+    if (area >= rmData.w * rmData.h * 0.8) return;
+    px = rmHiCapRect(rect, px);
+    if (px <= full + 0.5) return;
+
+    var key = [rmCode, rmRoom, rmLiveLayer || '', rmSlugcat(), px,
+               rect[0], rect[1], rect[2], rect[3]].join('|');
+    if (key === rmLiveHiKey) return;
+    var hit = rmLiveHiCache[key];
+    if (hit){ rmLiveHi = hit; rmLiveHiKey = key; drawRoom(); return; }
+
+    var seq = ++rmLiveHiSeq;
+    var code = rmCode, room = rmRoom;
+    bridgeCall('room_render', code, room, rmLiveLayer, rmSlugcat(), 0,
+               [rect[0], rect[1], rect[2], rect[3]], px).then(function(res){
+      if (seq !== rmLiveHiSeq || code !== rmCode || room !== rmRoom) return;
+      if (!res || !res.ok || !res.dataUrl) return;     /* 失败就继续用整图，不吭声 */
+      var img = new Image();
+      img.onload = function(){
+        if (seq !== rmLiveHiSeq || code !== rmCode || room !== rmRoom) return;
+        var cp = res.crop || rect;
+        var rec = { img: img, px: res.pxPerTile || px,
+                    tx: cp[0], ty: cp[1], tw: cp[2] - cp[0], th: cp[3] - cp[1] };
+        rec.bytes = (res.width || 0) * (res.height || 0) * 4;
+        rmLiveHiCache[key] = rec;
+        rmLiveHiBytes += rec.bytes;
+        rmLiveHiOrder.push(key);
+        while (rmLiveHiOrder.length > 6
+               || (rmLiveHiBytes > 24 * 1024 * 1024 && rmLiveHiOrder.length > 1)){
+          var goneKey = rmLiveHiOrder.shift();
+          var goneRec = rmLiveHiCache[goneKey];
+          if (goneRec && goneRec.bytes) rmLiveHiBytes -= goneRec.bytes;
+          delete rmLiveHiCache[goneKey];
+        }
+        rmLiveHi = rec;
+        rmLiveHiKey = key;
+        drawRoom();
+      };
+      img.src = res.dataUrl;
+    }).catch(function(){});
+  }
+
+  function rmHiSchedule(){
+    if (rmLiveHiTimer) clearTimeout(rmLiveHiTimer);
+    rmLiveHiTimer = setTimeout(function(){ rmLiveHiTimer = 0; rmHiRequest(); }, 220);
+  }
+
+  /* 预取：开卡后 300 ms，把右栏那几个出口指向的房间排进后台队列。
+     用户在真正点击之前什么都不用等——队列由后端 worker 消费，我们不等它的结果。
+     依据：一间房平均 2.44 个出口，取前 3 个就能覆盖绝大多数跳转。 */
+  function rmSchedulePrefetch(){
+    if (rmPrefetchTimer) { clearTimeout(rmPrefetchTimer); rmPrefetchTimer = 0; }
+    if (rmStyle !== 'live' || !hasBridge()) return;
+    var targets = [];
+    for (var i = 0; i < rmExitTargets.length && targets.length < 3; i++){
+      var t = rmExitTargets[i];
+      if (t && targets.indexOf(t) < 0) targets.push(t);
+    }
+    if (!targets.length) return;
+    var code = rmCode, token = rmToken, layer = rmLiveLayer, slug = rmSlugcat();
+    rmPrefetchTimer = setTimeout(function(){
+      rmPrefetchTimer = 0;
+      if (token !== rmToken || code !== rmCode) return;   /* 用户已经切走，别再排队 */
+      bridgeCall('room_prefetch', code, targets, layer, slug, rmLiveFit()).catch(function(){});
+    }, 300);
+  }
+
+  function rmFlag(kind, html){
+    var el = $('rm-live-flag');
+    if (!el) return;
+    el.className = 'rm-live-flag' + (kind ? ' on' : '') + (kind === 'err' ? ' err' : '');
+    el.innerHTML = html || '';
+    if (kind !== 'err') el.title = '';
+  }
+
+  /* 错误码 → 人话。后端只保证「码」稳定，句子留在这里：改文案不用动 Python，
+     用户也不会看到 `RenderError: ...` 这种英文串。每条 = [角标短句, 悬停解释]。 */
+  var RM_ERR_TEXT = {
+    no_texture:      ['没有地形纹理', '这间房缺地形图（_1.png）。多半是模组没带图，或游戏文件不完整；\n与存档内容无关，房间卡的其他信息照常可用。'],
+    missing_dir:     ['找不到房间目录', '这个区域记下的房间目录不在本机了（换机器、卸了模组或挪过目录）。\n重新导入一次区域数据即可恢复。'],
+    no_file:         ['找不到房间文件', '这间房的 .txt 不在当前来源里。可能是这个来源被关掉了，\n或该房间属于另一个来源。'],
+    no_region:       ['区域数据未导入', '还没有这个区域的数据，先去「区域数据」导入一次。'],
+    no_palette:      ['缺调色板', '这个区域的 palettes/palette*.png 找不到，渲不出颜色。\n模组通常自己带一张，缺的话只能是模组素材不全。'],
+    bad_texture:     ['地形图格式异常', '地形纹理的通道数或尺寸不对，文件可能已损坏。'],
+    bad_png:         ['素材文件损坏', '解码 PNG 失败，文件可能不完整。'],
+    unsupported_png: ['素材格式不支持', '这张 PNG 的色彩类型目前解不了（例如带交错的位深变体）。'],
+    io:              ['素材读不出来', '读文件时出错：文件被占用、权限不足，或磁盘有问题。'],
+    unparsable:      ['房间文件解析失败', '房间 .txt 的结构不完整，可能文件被截断。'],
+    render_failed:   ['渲染出错', '渲染过程中抛了异常，细节见下方。'],
+    aborted:         ['已取消', '这次渲染被更新的请求打断；正常情况下会立刻重来，不用管。'],
+    bad_room:        ['房间名为空', '没有拿到房间名。']
+  };
+
+  function rmErrText(res, err){
+    var code = String((res && res.error) || '');
+    var detail = String((res && res.detail) || '');
+    if (err) detail = detail || String((err && err.message) || err);
+    var hit = RM_ERR_TEXT[code];
+    if (!hit){
+      return ['实机图不可用', (code ? '错误码：' + code : '没有拿到错误码') + (detail ? '\n' + detail : '')];
+    }
+    return [hit[0], hit[1] + (detail ? '\n\n技术细节：' + detail : '')];
+  }
+
+  /* 把「降级成感叹号」收在一处：角标只放短句，长解释挂 title，不弹窗、不空屏。 */
+  function rmFail(res, err){
+    rmLive = { ok: false };
+    var t = rmErrText(res, err);
+    rmFlag('err', '<b>!</b> ' + esc(t[0]));
+    var el = $('rm-live-flag');
+    if (el) el.title = t[1];
+    drawRoom();
+  }
+
+  function rmStylePaint(){
+    var box = $('rm-style');
+    if (!box) return;
+    [].slice.call(box.querySelectorAll('button')).forEach(function(b){
+      b.classList.toggle('on', b.getAttribute('data-rmstyle') === rmStyle);
+    });
+  }
+
+  function rmStyleSet(next, silent){
+    rmStyle = (next === 'live') ? 'live' : 'vector';
+    state.roomCardStyle = rmStyle;
+    rmStylePaint();
+    if (!silent && hasBridge()){
+      bridgeCall('save_config', { ui: { roomCardStyle: rmStyle } }).catch(function(){});
+    }
+    if (rmStyle === 'live'){
+      rmMaybeRender();
+      rmSchedulePrefetch();
+    }
+    else { rmHiDrop(); rmFlag('', ''); drawRoom(); }
+  }
+
+  /* 开关出不出现只看一件事：素材根里有没有调色板。没有就整体隐藏（不是禁用）——
+     一个永远算不出图的开关，比没有这个开关更让人困惑。 */
+  function rmProbeStyle(){
+    var box = $('rm-style');
+    if (!box) return;
+    if (!hasBridge()){ box.hidden = true; return; }
+    var code = rmCode;
+    if (rmLiveCapable[code] === true){ box.hidden = false; return; }
+    if (rmLiveCapable[code] === false){ box.hidden = true; return; }
+    box.hidden = true;        /* 探测回来之前不露头，免得闪一下又消失 */
+    bridgeCall('room_render_info', code).then(function(res){
+      var ok = !!(res && res.ok && res.available);
+      rmLiveCapable[code] = ok;
+      if (rmCode !== code) return;
+      var el = $('rm-style');
+      if (el) el.hidden = !ok;
+      /* 探测说不可用、但配置里选的是实机：悄悄退回矢量，别停在永远出不来图的视图 */
+      if (!ok && rmStyle === 'live') rmStyleSet('vector', true);
+    }).catch(function(){
+      rmLiveCapable[code] = false;
+      var el = $('rm-style');
+      if (el) el.hidden = true;
+    });
+  }
+
+  function rmFadeIn(){
+    var raf = window.requestAnimationFrame;
+    if (!raf){ rmLiveFade = 1; drawRoom(); return; }
+    var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    rmLiveFade = 0;
+    function step(){
+      var now = (window.performance && performance.now) ? performance.now() : Date.now();
+      rmLiveFade = Math.min(1, (now - t0) / 120);
+      drawRoom();
+      if (rmLiveFade < 1) raf(step);
+    }
+    raf(step);
+  }
+
+  function rmMaybeRender(){
+    if (rmStyle !== 'live' || !rmData || !hasBridge()) return;
+    var code = rmCode, room = rmRoom, seq = rmLiveSeq;
+    var key = rmLiveKey(code, room);
+
+    var hit = rmLiveCache[key];
+    if (hit && hit.ok){
+      rmLive = hit; rmLiveFade = 1;
+      rmFlag('', '');
+      drawRoom();
+      rmHiSchedule();          /* 缓存命中也可能要补裁块（用户已经放大着看） */
+      return;
+    }
+
+    rmLive = null;            /* 先退回矢量，任何时刻都不空屏 */
+    rmFlag('on', '渲染中…');
+    drawRoom();
+
+    /* 宽度上限按设备像素算（见 rmLiveFit）：卡片最宽 1000 CSS px 出头，但有 dpr 在 */
+    bridgeCall('room_render', code, room, rmLiveLayer, rmSlugcat(), rmLiveFit()).then(function(res){
+      if (seq !== rmLiveSeq || code !== rmCode || room !== rmRoom) return;
+      if (res && res.error === 'superseded') return;   /* 被更新的请求挤掉，那个会补上 */
+      if (!res || !res.ok || !res.dataUrl){
+        rmFail(res);
+        return;
+      }
+      var img = new Image();
+      img.onload = function(){
+        if (seq !== rmLiveSeq || code !== rmCode) return;
+        var rec = { ok: true, img: img, w: res.width, h: res.height,
+                    px: res.pxPerTile || 20, ms: res.ms || 0,
+                    src: res.source || '', cached: !!res.cached };
+        rmLiveRemember(key, rec);
+        rmLive = rec;
+        rmFlag('', '');
+        rmFadeIn();
+        rmHiSchedule();        /* 整图到货后再看要不要补高密度裁块 */
+      };
+      img.onerror = function(){
+        if (seq !== rmLiveSeq || code !== rmCode) return;
+        rmFlag('err', '<b>!</b> 实机图解不开');
+        var el = $('rm-live-flag');
+        if (el) el.title = '后端出图成功，但浏览器解不开这张 PNG（数据在传输中被截断？）。\n' +
+          '可以重开一次房间试试；反复出现请把 room_render 的日志留下。';
+        rmLive = { ok: false };
+        drawRoom();
+      };
+      img.src = res.dataUrl;
+    }).catch(function(err){
+      if (seq !== rmLiveSeq || code !== rmCode) return;
+      rmFail(null, err);
+    });
+  }
+
   function drawRoom(){
     var cv = $('rm-canvas'), ctx = cv && cv.getContext('2d');
     if (!ctx || !rmData || !rmRuns) return;
@@ -8437,6 +8979,8 @@ function parseSave(raw, onProgress){
     ctx.fillStyle = solidC;
     ctx.fillRect(0, 0, rmView.cw, rmView.ch);
 
+    /* 矢量地形先画：它很便宜（几百次 fillRect），而且在实机图淡入的那 120 ms 里
+       它就是底色——先清空再淡入会闪一下实心色，看起来像房间跳了一下。 */
     ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * rmView.tx, dpr * rmView.ty);
     ctx.fillStyle = air;
     rmRuns.air.forEach(function(r){ ctx.fillRect(r.x, r.y, r.n, 1.02); });
@@ -8453,8 +8997,30 @@ function parseSave(raw, onProgress){
       rmMarks.climb.forEach(function(p){ ctx.fillRect(p[0], p[1], 1.02, 1.02); });
     }
 
-    /* 一格的边长 ≥ 9px 才画网格，否则会糊成一片灰 */
-    if (s >= 9){
+    /* 实机图压在矢量层上：位图自带天空填色、是不透明的，盖住就完事。
+       尺寸就是 w×h tile（1 px = 1 tile 再乘密度），在 tile 空间里正好铺满
+       0..w / 0..h，所以一个坐标换算都不用做，缩放平移自动跟随。
+       插值开关有个反直觉的地方：放大时必须关（像素美术一插值就糊），
+       缩小时要开（否则满屏锯齿）——判据就是「当前是不是比源图更稀」。 */
+    var live = (rmStyle === 'live' && rmLive && rmLive.ok && rmLive.img) ? rmLive : null;
+    if (live){
+      ctx.imageSmoothingEnabled = s < (live.px || 20);
+      ctx.globalAlpha = rmLiveFade;
+      ctx.drawImage(live.img, 0, 0, rmData.w, rmData.h);
+      ctx.globalAlpha = 1;
+      ctx.imageSmoothingEnabled = true;
+    }
+    /* 放大后的高密度裁块压在整图上：它只盖住自己那几格，其余地方仍是整图。
+       两者同位置逐像素一致（后端断言守着），所以看得见的只有「变清楚了」。 */
+    if (live && rmLiveHi && rmLiveHi.img && rmLiveFade >= 1){
+      ctx.imageSmoothingEnabled = s < rmLiveHi.px;
+      ctx.drawImage(rmLiveHi.img, rmLiveHi.tx, rmLiveHi.ty, rmLiveHi.tw, rmLiveHi.th);
+      ctx.imageSmoothingEnabled = true;
+    }
+
+    /* 一格的边长 ≥ 9px 才画网格，否则会糊成一片灰。
+       实机视图下不画：那层格线是给"量格子"用的，盖在渲染图上只会像一层脏网。 */
+    if (s >= 9 && !live){
       var w = rmData.w, h = rmData.h, x, y;
       ctx.strokeStyle = gridC;
       ctx.lineWidth = 1.2 / s;
@@ -8628,6 +9194,7 @@ function parseSave(raw, onProgress){
     rmView.scale = next;
     clampRoomPan();
     drawRoom();
+    rmHiSchedule();          /* B 档：缩放停下 220 ms 后补一块高密度裁块 */
   }
 
   /* 房间卡上的「自动 / 已探索 / 未探索」三档 */
@@ -8704,6 +9271,18 @@ function parseSave(raw, onProgress){
     var fullBtn = $('rm-full');
     if (fullBtn) fullBtn.addEventListener('click', function(){ rmApplyFull(!state.roomCardFull); });
 
+    /* 矢量 / 实机：委托到容器，按钮只有一个来源（HTML 里的静态结构），不用重绑 */
+    var styleBox = $('rm-style');
+    if (styleBox) styleBox.addEventListener('click', function(ev){
+      var el = ev.target;
+      while (el && el !== styleBox && !(el.getAttribute && el.getAttribute('data-rmstyle'))){
+        el = el.parentNode;
+      }
+      if (!el || el === styleBox || !el.getAttribute) return;
+      var next = el.getAttribute('data-rmstyle');
+      if (next && next !== rmStyle) rmStyleSet(next);
+    });
+
     /* F 键切全屏 / 紧凑：只在房间卡打开、且焦点不在输入框里时生效 */
     document.addEventListener('keydown', function(ev){
       if (!roomModal || roomModal.hidden) return;
@@ -8746,6 +9325,7 @@ function parseSave(raw, onProgress){
       st.classList.remove('dragging');
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      rmHiSchedule();            /* 拖完了才补裁块，拖拽过程中一帧都不发请求 */
     }
     cv.addEventListener('mousedown', function(ev){
       if (ev.button !== 0 || !rmData) return;
@@ -8870,6 +9450,13 @@ function parseSave(raw, onProgress){
         if (cfg.ui.roomExcluded && typeof cfg.ui.roomExcluded === 'object') state.roomExcluded = cfg.ui.roomExcluded;
         if (typeof cfg.ui.roomStrict === 'boolean') state.roomStrict = cfg.ui.roomStrict;
         if (typeof cfg.ui.roomCardFull === 'boolean') state.roomCardFull = cfg.ui.roomCardFull;
+        if (typeof cfg.ui.mapBase === 'boolean') state.mapBase = cfg.ui.mapBase;
+        if (cfg.ui.roomCardStyle === 'live' || cfg.ui.roomCardStyle === 'vector'){
+          state.roomCardStyle = cfg.ui.roomCardStyle;
+        }
+        /* rmStyle 是绘图时真正读的那个副本，配置加载完必须同步过去 */
+        rmStyle = state.roomCardStyle;
+        rmStylePaint();
         if (cfg.ui.graphColors && typeof cfg.ui.graphColors === 'object'){
           state.graphColors = {
             dark: (cfg.ui.graphColors.dark && typeof cfg.ui.graphColors.dark === 'object') ? cfg.ui.graphColors.dark : {},
@@ -8983,6 +9570,30 @@ function parseSave(raw, onProgress){
     openGraph: function(code, room){ openGraph(code, room || ''); return true; },
     openWorld: function(){ openWorldGraph(); return true; },
     marks: function(){ return state.roomMarks || {}; },
+    /* 底图层（P0）读数：供 check_map 断言，避免靠 DOM 文本猜状态 */
+    mapBase: function(){
+      var el = document.getElementById('map-base');
+      return {
+        enabled: !!state.mapBase,
+        on: !!(el && el.classList.contains('on')),
+        hasHref: !!(el && el.getAttribute('href')),
+        url: el ? String(el.getAttribute('href') || '').slice(0, 22) : '',
+        w: el ? (+el.getAttribute('width') || 0) : 0,
+        h: el ? (+el.getAttribute('height') || 0) : 0,
+        cached: Object.keys(window.__rwMapBase || {}).length
+      };
+    },
+    setMapBase: function(on){
+      state.mapBase = !!on;
+      var b = document.getElementById('map-base-btn');
+      if (b) b.classList.toggle('on', state.mapBase);
+      var el = document.getElementById('map-base');
+      if (el){
+        if (!state.mapBase) el.classList.remove('on');
+        else if (el.getAttribute('href')) el.classList.add('on');
+      }
+      return true;
+    },
     setMark: function(code, room, v){ setRoomMark(code, room, v); return true; },
     exclude: function(code, room, on){
       setRoomExcluded((currentCampaign() || {}).slugcat, code, room, on !== false);
@@ -9146,7 +9757,108 @@ function parseSave(raw, onProgress){
       info.cardH = cardEl ? cardEl.clientHeight : 0;
       info.viewW = window.innerWidth || 0;
       info.viewH = window.innerHeight || 0;
+      /* V1.2 实机视图：开关状态与位图读数
+         （check_room 用这几条断言「能切过去、位图真的到位、失败不炸」） */
+      info.style = rmStyle;
+      info.styleShown = !!($('rm-style') && !$('rm-style').hidden);
+      info.live = rmLive
+        ? { ok: !!rmLive.ok, w: rmLive.w || 0, h: rmLive.h || 0,
+            px: rmLive.px || 0, ms: rmLive.ms || 0, src: rmLive.src || '',
+            cached: !!rmLive.cached }
+        : null;
+      info.liveFlag = $('rm-live-flag') ? $('rm-live-flag').textContent : '';
+      /* B 档：高密度裁块（check_room 断言「放大后 px 顶到 20、范围小于整间」） */
+      info.hi = rmLiveHi
+        ? { px: rmLiveHi.px, tx: rmLiveHi.tx, ty: rmLiveHi.ty,
+            tw: rmLiveHi.tw, th: rmLiveHi.th }
+        : null;
+      info.liveFlagOn = !!($('rm-live-flag') && $('rm-live-flag').classList.contains('on'));
+      info.liveCached = rmLiveOrder.length;
+      info.liveBytes = rmLiveBytes;
+      info.prefetchPending = !!rmPrefetchTimer;
       return info;
+    },
+    /* 实机视图有没有盖住出口十字：读每个出口格中心的像素回来自己比色。
+       位图一旦画在十字上面，这些像素就变成地形色，断言立刻红。
+       （注意必须在「无悬停」时读：悬停会把那个十字抠掉换成徽章。） */
+    roomMarkPixels: function(){
+      var cv2 = $('rm-canvas');
+      if (!cv2 || !rmData || !rmMarks) return { ready: false };
+      var ctx2 = cv2.getContext('2d'), dpr2 = rmView.dpr, s2 = rmView.scale;
+      var hex2 = (window.getComputedStyle($('rm-stage')).getPropertyValue('--rm-exit') || '').trim() || '#3ae03a';
+      var want2 = [parseInt(hex2.substr(1, 2), 16), parseInt(hex2.substr(3, 2), 16), parseInt(hex2.substr(5, 2), 16)];
+      var out2 = [];
+      rmMarks.marks.forEach(function(m){
+        if (m[2] !== 'exit') return;
+        var cx = (rmView.tx + (m[0] + 0.5) * s2) * dpr2;
+        var cy = (rmView.ty + (m[1] + 0.5) * s2) * dpr2;
+        if (cx < 1 || cy < 1 || cx >= cv2.width - 1 || cy >= cv2.height - 1){
+          out2.push({ cell: [m[0], m[1]], off: true, match: false });
+          return;
+        }
+        var d = ctx2.getImageData(Math.floor(cx), Math.floor(cy), 1, 1).data;
+        out2.push({
+          cell: [m[0], m[1]], rgb: [d[0], d[1], d[2]],
+          match: Math.abs(d[0] - want2[0]) < 16 && Math.abs(d[1] - want2[1]) < 16 &&
+                 Math.abs(d[2] - want2[2]) < 16
+        });
+      });
+      return { ready: true, expect: want2, marks: out2, onScreen: out2.filter(function(o){ return !o.off; }).length };
+    },
+    /* 在房间矩形里均匀取 n×n 个点的 RGB。同一视图下取两次（矢量 / 实机）再比对，
+       是「位图真的贴上去了」最直接的证据——比肉眼看截图可靠得多。 */
+    roomPixels: function(n){
+      var cv3 = $('rm-canvas');
+      if (!cv3 || !rmData) return null;
+      var ctx3 = cv3.getContext('2d'), dpr3 = rmView.dpr, s3 = rmView.scale;
+      n = n || 8;
+      var out3 = [];
+      for (var iy = 0; iy < n; iy++){
+        for (var ix = 0; ix < n; ix++){
+          var tx = (ix + 0.5) / n * rmData.w, ty = (iy + 0.5) / n * rmData.h;
+          var px = Math.round((rmView.tx + tx * s3) * dpr3);
+          var py = Math.round((rmView.ty + ty * s3) * dpr3);
+          if (px < 0 || py < 0 || px >= cv3.width || py >= cv3.height){ out3.push(null); continue; }
+          var d3 = ctx3.getImageData(px, py, 1, 1).data;
+          out3.push([d3[0], d3[1], d3[2]]);
+        }
+      }
+      return out3;
+    },
+    /* 直接切画法（回归用；界面上的按钮走同一条 rmStyleSet） */
+    setRoomStyle: function(s){
+      rmStyleSet(s);
+      return rmStyle;
+    },
+    /* 立刻结束淡入并重绘（回归用）。淡入靠 requestAnimationFrame 推进，
+       窗口在后台时 Chromium 会节流它——采样像素前必须先把 alpha 拉到 1，
+       否则「位图画没画上去」这条断言会拿矢量图当结果，变成噪声测试。 */
+    revealLive: function(){
+      rmLiveFade = 1;
+      drawRoom();
+      return true;
+    },
+    /* 清空 L1 内存缓存（回归用：逼下一次请求走磁盘，验证 L2 的 SLO） */
+    clearLiveCache: function(){
+      rmLiveCache = {}; rmLiveOrder = []; rmLiveBytes = 0;
+      rmHiDrop();
+      return true;
+    },
+    /* 区域数据弹窗里的「房间渲染缓存」一行（回归用：确认入口渲染出来了） */
+    cacheBar: function(){
+      var el = $('m-room-cache'), btn = $('m-room-clear');
+      return { text: el ? el.textContent : '', hasButton: !!btn,
+               disabled: !!(btn && btn.disabled) };
+    },
+    /* 放大到 fit 的 mult 倍（回归用：触发 B 档裁块）。按中心放大，和滚轮一个效果。 */
+    zoomRoom: function(mult){
+      if (!rmData) return false;
+      var k = (mult || 2) * rmView.fit;
+      rmView.scale = Math.max(rmView.fit * 0.9, Math.min(rmView.fit * 16, k));
+      clampRoomPan();
+      drawRoom();
+      rmHiSchedule();
+      return true;
     },
     /* 悬停徽章：在出口格中心偏一点（避开数字笔画）取像素，确认强调色真的画出来了 */
     roomBadgePixel: function(){

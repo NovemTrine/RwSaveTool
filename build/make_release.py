@@ -128,6 +128,7 @@ def write_docs() -> int:
         "模组数据      不含。使用者在程序里自行导入创意工坊模组后生成",
         "地图底图      不含。导入游戏本体后底图自动可用",
         "个人数据      不含。无配置、无存档内容、无导入缓存、无本机路径",
+        "              区域数据里记录的素材路径已统一抹除（换机器后按提示重新导入即可）",
         "",
         "【本包内容】",
         "RwSaveTool.exe              主程序 · 目录版（启动快，推荐日常用；必须与 _internal/ 一起）",
@@ -148,9 +149,9 @@ def write_docs() -> int:
         "%APPDATA%\\RwSaveTool\\ 下，不影响使用。",
         "",
         "【本版要点】",
-        "· 房间卡新增右侧出口清单：每个管道口的编号与去向，可点击跳转、悬停高亮",
-        "· 修正角色筛选（条件房间按逗号拆分）与完成度分母（补回 DLC / 模组层）",
-        "· 区域拓扑单击节点即进入房间卡，拖动松手不再误触发",
+        "· 房间卡新增「矢量 / 实机」切换：按游戏自带的着色算法还原整间房的相貌（地形/天空/水/道具）",
+        "· 高分屏按设备像素取密度；放大停下后自动补 20 px/tile 的视口裁块，放大不再糊",
+        "· 水面统一成一种画法（不再出现色块）；区域数据页新增渲染缓存的占用与一键清理",
         "",
     ]
     with io.open(os.path.join(PKG, "VERSION.txt"), "w", encoding="utf-8", newline="\r\n") as fh:
@@ -170,7 +171,9 @@ def main() -> int:
     regions = write_docs()
     print("已刷新随包文本（区域 %d 个）" % regions)
 
-    files = walk_files(PKG)
+    # 清单文件自己不算进去（否则第二次生成时会把上一次的 CHECKSUMS.txt 数进来，
+    # 文件总数在 275/276 之间来回跳，校验的人会以为包变了）
+    files = [item for item in walk_files(PKG) if item[0] != "CHECKSUMS.txt"]
     total = sum(size for _n, size in files)
 
     key_files = [
@@ -190,7 +193,7 @@ def main() -> int:
     lines.append("RwSaveTool v%s · 校验清单" % VERSION)
     lines.append("=" * 62)
     lines.append("生成时间   %s" % time.strftime("%Y-%m-%d %H:%M:%S"))
-    lines.append("文件总数   %d" % len(files))
+    lines.append("文件总数   %d（不含本文件 CHECKSUMS.txt；zip 里的实际条目会多 1 个）" % len(files))
     lines.append("解压体积   %s（%d 字节）" % (human(total), total))
     lines.append("区域数据   %d 个官方区域 + _sources.json" % len(region_files))
     lines.append("")

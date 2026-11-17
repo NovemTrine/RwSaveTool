@@ -30,7 +30,7 @@ import struct
 import time
 from typing import Any
 
-from . import paths, sources
+from . import paths, room_cache, sources
 
 OVERRIDES_FILE = "_overrides.json"
 # 区域数据 schema：
@@ -455,6 +455,9 @@ def save_region(region: dict, force: bool = False) -> dict:
     ok = _write_json(_region_path(code), record)
     if not ok:
         return {"ok": False, "error": f"{code}: 写入失败（目录不可写）"}
+    # 数据变了，这区所有房间渲染图都必须作废：房间文件的 mtime 只能发现几何变化，
+    # 而调色板/设置模板是另一份文件，改了不会动房间文件的 mtime。
+    room_cache.purge_region(code)
     # 层写入成功 → 保证来源注册表里也有它
     src = sources.ensure(new_layer["id"], new_layer["kind"], new_layer.get("label"))
     return {
@@ -467,7 +470,6 @@ def save_region(region: dict, force: bool = False) -> dict:
         "stats": new_layer.get("stats"),
         "path": _region_path(code),
     }
-
 
 def save_regions(regions: list[dict], force: bool = False) -> dict:
     saved, failed, needs = [], [], []
@@ -487,6 +489,7 @@ def delete_region(code: str) -> dict:
     try:
         if os.path.isfile(path):
             os.remove(path)
+            room_cache.purge_region(code)
             return {"ok": True, "code": code.upper()}
         return {"ok": False, "error": "该区域没有导入数据"}
     except OSError as exc:
@@ -507,6 +510,7 @@ def delete_layer(code: str, layer_id: str) -> dict:
         return delete_region(code)
     record["layers"] = remaining
     _write_json(_region_path(code), _normalize(record))
+    room_cache.purge_region(code)      # 少了一层，房间的来源/调色板都可能变
     return {"ok": True, "code": code, "layer": layer_id}
 
 
@@ -632,6 +636,7 @@ def delete_source(source_id: str, clean_refs: bool = True) -> dict:
                     os.remove(path)
             except OSError:
                 pass
+            room_cache.purge_region(code)
             dropped_regions.append(code)
             continue
         if clean_refs and removed:
@@ -639,6 +644,7 @@ def delete_source(source_id: str, clean_refs: bool = True) -> dict:
                 refs += _strip_refs(layer, removed)
         region["layers"] = keep
         _write_json(_region_path(code), _normalize(region))
+        room_cache.purge_region(code)     # 这一区少了一个来源，房间与引用都变了
         written += 1
 
     return {

@@ -11,6 +11,9 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
+from collections import deque
 
 from . import (
     __release_date__,
@@ -21,6 +24,8 @@ from . import (
     paths,
     region_store,
     room_geo,
+    room_cache,
+    room_render,
     save_io,
     sources,
     translations,
@@ -32,9 +37,102 @@ except Exception:  # pragma: no cover
     webview = None
 
 
+# 渲染是 CPU 密集的，而 pywebview 给每个 JS 调用都单起一个线程：
+# 连续点几间房会同时算，风扇起飞还不一定先算完用户要看的那间。
+# 所以串成一条门闩，并且「后来者优先」——在门口排队时发现已经有更新的请求，
+# 就直接作废自己，把 CPU 让出去。
+_render_gate = threading.Lock()
+
+# ---- 预取队列（M3）-------------------------------------------------------
+# 用户点开一间房后，他最可能点的下一间就是右栏那几个出口。与其等他点，
+# 不如提前把图算好落盘——命中时从 2 s 变成 12 ms。
+#
+# 三条纪律：
+#   · 永远让路：有用户请求在等门闩时，预取一个都不许算（`_user_waiting`）；
+#   · 新款作废旧款：`_prefetch_serial` 一变，队列里的旧任务全部失效；
+#   · 只入队不阻塞：`room_prefetch` 立刻返回，界面绝不等它。
+_prefetch_q: "deque[tuple]" = deque()
+_prefetch_lock = threading.Lock()
+_prefetch_serial = 0
+_prefetch_thread = None
+_user_waiting = 0
+_last_user_at = 0.0
+_PREFETCH_MAX = 6
+_PREFETCH_QUIET = 0.4
+"""用户最后一次请求之后要静默这么久，预取才允许开工。用户连点几间房时它会一直让路。"""
+
+# 存档里写的是 `White` / `Saint` 这种键，渲染内核按正式名找 `<room>_settings-<名>.txt`。
+# 收敛成同一个键还有个副作用是好事：同一间房不会因为传了两种写法被算成两份缓存。
+_SLUGCAT_CANON = {
+    "white": "survivor", "survivor": "survivor",
+    "yellow": "monk", "monk": "monk",
+    "red": "hunter", "hunter": "hunter",
+    "spear": "spearmaster", "spearmaster": "spearmaster",
+}
+
+
+def _canon_slugcat(value: str | None) -> str | None:
+    raw = "".join(ch for ch in str(value or "").lower() if ch.isalnum())
+    if not raw:
+        return None
+    return _SLUGCAT_CANON.get(raw, raw)
+
+
+def _ensure_prefetch_worker() -> None:
+    """按需起一个常驻线程。没有预取任务时它只是每 100 ms 醒一次，几乎不耗 CPU。"""
+    global _prefetch_thread
+    with _prefetch_lock:
+        if _prefetch_thread is not None and _prefetch_thread.is_alive():
+            return
+        _prefetch_thread = threading.Thread(
+            target=_prefetch_loop, name="room-prefetch", daemon=True)
+        _prefetch_thread.start()
+
+
+def _prefetch_loop() -> None:
+    while True:
+        if _user_waiting or (time.time() - _last_user_at) < _PREFETCH_QUIET:
+            # 用户正在渲染、或者刚点完还在看：预取一个都不许算。
+            # 连点几间房时这条会让预取一直让路——那是正确的，用户优先。
+            time.sleep(0.05)
+            continue
+        with _prefetch_lock:
+            job = _prefetch_q.popleft() if _prefetch_q else None
+            current = _prefetch_serial
+        if job is None:
+            time.sleep(0.10)
+            continue
+
+        code, room, layer_id, slugcat, fit_width, serial = job
+        if serial != current:
+            continue                       # 这一批已经过期（用户换了房间）
+        region = region_store.get_region(code)
+        if not region:
+            continue
+        with _render_gate:
+            if _user_waiting:
+                # 排到门口时用户来了：这张直接放弃。宁可白排一次，
+                # 也不能让用户等一个他并不需要的渲染。
+                continue
+            try:
+                room_render.render(
+                    region, room, layer_id, _canon_slugcat(slugcat),
+                    px_per_tile=room_render.PX_PER_TILE, sky="fill", water=True,
+                    use_cache=True, fit_width=max(0, int(fit_width or 0)),
+                    # 用户一来就自断：预取占的是空闲时间，不该让任何人排队等它。
+                    # 中断粒度是 32 行（几毫秒），放弃的那张不写盘，下次点开会重算。
+                    abort=lambda: _user_waiting > 0 or _prefetch_serial != serial,
+                )
+            except Exception:  # noqa: BLE001 - 预取失败（含主动中断）没有任何后果
+                pass
+        time.sleep(0.05)                   # 两间之间留一口气，别把风扇拉满
+
+
 class Api:
     def __init__(self) -> None:
         self._window = None
+        self._render_ticket = 0
+        self._ticket_lock = threading.Lock()
 
     def attach(self, window) -> None:
         self._window = window
@@ -389,6 +487,138 @@ class Api:
             return {"ok": False, "error": "unparsable", "detail": str(exc), "room": room}
         except Exception as exc:  # noqa: BLE001 - 桥接层不向外抛，界面显示错误即可
             return {"ok": False, "error": "unparsable", "detail": str(exc), "room": room}
+
+    # ------------------------------------------------------------------
+    # 房间实机渲染（V1.2 · M2）
+    # ------------------------------------------------------------------
+    def room_render_info(self, code: str) -> dict:
+        """「实机」开关能不能出现：只探测素材根，不渲染、不读房间。"""
+        region = region_store.get_region(code)
+        if not region:
+            return {"ok": False, "error": "no_region", "available": False}
+        return room_render.probe(region)
+
+    def room_render(self, code: str, room: str, layer_id: str | None = None,
+                    slugcat: str | None = None, fit_width: int = 1400,
+                    crop=None, px=None) -> dict:
+        """渲染一间房，返回 PNG 的 data URL。
+
+        **这是同步调用**：冷渲染 0.4–3.7 s，命中磁盘 5~12 ms。界面上必须
+        「发出去就不管」——绝不能在 `openRoomCard()` 里 await 它，否则开卡时间翻几倍。
+        pywebview 会给每次调用单起线程，所以这里阻塞不会冻住界面。
+
+        返回里的 `source` 说明这次是 memory / disk / render，界面和回归都靠它判断。
+
+        `crop=(tx0, ty0, tx1, ty1)`（tile）是**放大后补细节**用的视口裁块：只解码与它
+        相交的摄像机，只着色这一块，所以「整间 196×72 的房」放大到 20 px/tile 也只要
+        1.3 s 而不是 20 s（实测 2026-11-18）。裁块只进内存缓存，不落盘。
+
+        裁块**不抢 ticket 号**：它只是「把当前这张看得更清楚」，不该把用户正在等的
+        那次开卡挤掉。反过来，一旦有新请求进来（ticket 变了），裁块会立刻中止让路。
+        """
+        global _prefetch_serial, _user_waiting, _last_user_at
+        region = region_store.get_region(code)
+        if not region:
+            return {"ok": False, "error": "no_region", "room": room}
+
+        crop = room_render._norm_crop(crop)
+        px = max(4, min(int(px or room_render.PX_PER_TILE), room_render.PX_PER_TILE))
+        fit = 0 if crop else max(0, int(fit_width or 0))
+
+        if crop:
+            with self._ticket_lock:
+                ticket = self._render_ticket          # 只记当前号，不占新号
+        else:
+            with self._ticket_lock:
+                self._render_ticket += 1
+                ticket = self._render_ticket
+            with _prefetch_lock:
+                _prefetch_serial += 1                 # 用户来了，队列里等待的预取全部作废
+        _last_user_at = time.time()
+
+        # 命中缓存必须能插队：预取正在算别的房间时，用户开一间**已经缓存好的**房
+        # 不该在门闩后面白等一次完整渲染（实测会白等 3.9 s）。查缓存不占门闩。
+        fast = room_render.lookup(
+            region, room, layer_id, _canon_slugcat(slugcat),
+            px, "fill", True, fit, crop)
+        if fast:
+            png = fast.pop("png", b"") or b""
+            fast["dataUrl"] = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+            fast["pngBytes"] = len(png)
+            return fast
+
+        _user_waiting += 1
+        try:
+            with _render_gate:
+                with self._ticket_lock:
+                    if ticket != self._render_ticket:
+                        # 排队期间用户又换了房间：直接把这一次丢掉，别抢占 CPU
+                        return {"ok": False, "error": "superseded", "room": room}
+                result = room_render.render(
+                    region, room, layer_id, _canon_slugcat(slugcat),
+                    px_per_tile=px, sky="fill", water=True,
+                    use_cache=True, fit_width=fit, crop=crop,
+                    # 裁块占的是「用户在看图」的时间：一旦有新请求（ticket 变了）就自断
+                    abort=(lambda: self._render_ticket != ticket) if crop else None,
+                )
+        finally:
+            _user_waiting -= 1
+
+        if not result.get("ok"):
+            return result
+        png = result.pop("png", b"") or b""
+        result["dataUrl"] = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+        result["pngBytes"] = len(png)
+        return result
+
+    def room_prefetch(self, code: str, rooms: list | None = None,
+                      layer_id: str | None = None, slugcat: str | None = None,
+                      fit_width: int = 1400) -> dict:
+        """把「右栏那几个出口指向的房间」排进后台队列（M3）。
+
+        立刻返回，绝不渲染。真正要不要算由 worker 决定：用户在等就让路，
+        批次过期就作废。所以调它没有代价，前端可以放心在开卡后无条件调用。
+        """
+        global _prefetch_serial
+        if not code or not rooms:
+            return {"ok": True, "queued": 0}
+        region = region_store.get_region(code)
+        if not region:
+            return {"ok": False, "error": "no_region", "queued": 0}
+
+        want: list[str] = []
+        for name in rooms:
+            key = str(name or "").strip()
+            if key and key.upper() not in (n.upper() for n in want):
+                want.append(key)
+            if len(want) >= 3:            # 一个房间平均 2.44 个出口，取前 3 就够
+                break
+        if not want:
+            return {"ok": True, "queued": 0}
+
+        with _prefetch_lock:
+            _prefetch_serial += 1
+            serial = _prefetch_serial
+            if len(_prefetch_q) > _PREFETCH_MAX:
+                _prefetch_q.clear()
+            for name in want:
+                _prefetch_q.append((code, name, layer_id, slugcat,
+                                    max(0, int(fit_width or 0)), serial))
+        _ensure_prefetch_worker()
+        return {"ok": True, "queued": len(want)}
+
+    def room_cache_info(self) -> dict:
+        """渲染缓存的占用量（给「区域数据」弹窗那一行用）。"""
+        info = room_cache.stats()
+        info["ok"] = True
+        info["regionDir"] = room_cache.region_dir("CC").rsplit(os.sep, 1)[0]
+        return info
+
+    def room_cache_clear(self) -> dict:
+        """清空渲染缓存。删的只是我们自己建的 `_roomcache/`，不碰导入数据。"""
+        with self._ticket_lock:
+            self._render_ticket += 1       # 让在途的渲染结果别再写回来
+        return room_cache.clear_all()
 
     def open_data_dir(self) -> dict:
         target = paths.data_dir()
