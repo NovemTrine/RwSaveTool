@@ -47,8 +47,8 @@ TAB_JS = "JSON.stringify({tab: window.__rwTest.tab()})"
 MAP_SUB = (
     "JSON.stringify({sub: (document.querySelector('#modal-sub')||{}).textContent||'',"
     "legend: (document.querySelector('#modal-body .map-legend')||{}).textContent||'',"
-    "opened: !!document.getElementById('map-svg'),"
-    "rooms: document.querySelectorAll('#map-svg rect.room').length})"
+    "opened: !!document.getElementById('geo-stage'),"
+    "rooms: document.querySelectorAll('#geo-stage .rm[data-room]').length})"
 )
 
 

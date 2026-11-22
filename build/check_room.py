@@ -212,7 +212,7 @@ def main() -> int:
 
         # ---- 1. 打开 GW 地图 ----
         js("var b=document.querySelector('[data-map=\"GW\"]'); if(b) b.click();")
-        time.sleep(1.0)
+        time.sleep(4.2)      # 区域地图现在是现算的几何图（冷启动实测要 3 s 上下）
         info = loads(js(
             "JSON.stringify({map:!document.getElementById('modal').hidden,"
             "chips:document.querySelectorAll('#mu-body .mu-chip').length})"
@@ -325,8 +325,9 @@ def main() -> int:
               f"room={nav2.get('room')} index={nav2.get('index')}")
 
         # 一路点到头：到头不循环，最后一间时「下一间」置灰
-        js("(function(){var n=0;while(n<60&&!document.getElementById('rm-next').disabled){"
-           "document.getElementById('rm-next').click();n++;}})();")
+        js("(function(){var n=0;var cap=%d;"
+           "while(n<cap&&!document.getElementById('rm-next').disabled){"
+           "document.getElementById('rm-next').click();n++;}})();" % (expect_unseen + 4))
         time.sleep(1.6)
         navEnd = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
         check("走到最后一间时「下一间」置灰、不循环",
@@ -362,25 +363,31 @@ def main() -> int:
 
         # ---- 6. 定位按钮 ----
         js("var b=document.getElementById('rm-locate'); if(b) b.click();")
-        time.sleep(0.9)
+        # 地图可能是现算的（几何图冷启动 3 s），高亮只亮 2.8 s，所以轮询"有没有亮过"，
+        # 不能靠一个固定 sleep：睡太短抓不到、睡太长高亮已经自己灭了。
+        seen_focus = 0
+        for _ in range(14):
+            time.sleep(0.4)
+            seen_focus = js("document.querySelectorAll('#geo-stage .rm.focus').length") or 0
+            if seen_focus:
+                break
         loc = loads(js(
             "JSON.stringify({card:window.__rwTest.roomCard().open,"
-            "map:!document.getElementById('modal').hidden,"
-            "focus:document.querySelectorAll('#map-svg .room.focus').length})"
+            "map:!document.getElementById('modal').hidden})"
         )) or {}
         check("「在地图上定位」关闭卡片", loc.get("card") is False, str(loc))
-        check("定位后地图仍在且方块高亮",
-              loc.get("map") is True and loc.get("focus", 0) >= 1, str(loc))
+        check("定位后地图仍在且房间高亮",
+              loc.get("map") is True and seen_focus >= 1, f"{loc} focus={seen_focus}")
 
-        # ---- 7. 点方块开卡 ----
+        # ---- 7. 点房间开卡（V1.20 起地图是几何图） ----
         clicked = js(
-            "(function(){var r=document.querySelector('#map-svg [data-room]');"
+            "(function(){var r=document.querySelector('#geo-stage .rm[data-room]');"
             "if(!r) return ''; var n=r.getAttribute('data-room'); r.dispatchEvent("
             "new MouseEvent('click',{bubbles:true})); return n;})()"
         )
         time.sleep(0.9)
         card2 = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
-        check("在地图上点方块也能开卡",
+        check("在地图上点房间也能开卡",
               card2.get("open") and card2.get("room") == clicked,
               f"clicked={clicked} card={card2.get('room')}")
 
@@ -705,16 +712,17 @@ def main() -> int:
               "编号" in (sl.get("exitNote") or "") and "未知" in (sl.get("exitNote") or ""),
               sl.get("exitNote"))
 
-        # ---- 11. 配色：默认＝编辑器灰阶，可自定义、可恢复 ----
+        # ---- 11. 配色：默认＝区域地图那套，可自定义、可恢复 ----
         pal = loads(js(
             "JSON.stringify((function(){var cs=getComputedStyle(document.documentElement);"
             "function g(n){return cs.getPropertyValue(n).trim();}"
             "return {air:g('--rm-air'),solid:g('--rm-solid'),climb:g('--rm-climb'),"
             "pipe:g('--rm-pipe'),exit:g('--rm-exit')};})())"
         )) or {}
-        check("默认配色 = 编辑器灰阶（空气 #535353 / 实心 #2f2f2f / 可攀爬 #3c3c3c / 管道 #777777）",
-              pal.get("air") == "#535353" and pal.get("solid") == "#2f2f2f"
-              and pal.get("climb") == "#3c3c3c" and pal.get("pipe") == "#777777",
+        # V1.15 定案：房间卡与区域地图合并成一套色卡（地图覆盖房间卡），所以默认不再是自己那套灰阶
+        check("默认配色 = 与区域地图同一套（空气 #8C97AF / 岩壁 #000000 / 背景结构 #637178 / 管道 #FFFFFF）",
+              pal.get("air") == "#8C97AF" and pal.get("solid") == "#000000"
+              and pal.get("climb") == "#637178" and pal.get("pipe") == "#FFFFFF",
               str(pal))
 
         rp = loads(js(
@@ -744,7 +752,7 @@ def main() -> int:
             "(function(){return getComputedStyle(document.documentElement)"
             ".getPropertyValue('--rm-air').trim();})()"
         )
-        check("「恢复本主题默认」回到编辑器灰阶", back == "#535353", str(back))
+        check("「恢复本主题默认」回到同一套默认色", back == "#8C97AF", str(back))
 
         js("document.getElementById('rp-close').click();")
         js("window.__rwTest.resetRoomPalette();")

@@ -1,0 +1,129 @@
+打分 117 个区（真值 map，near 20%）……
+    1/117 55     间  52/ 52  quad  83.4  oct8  63.8  near  72.2( 45格)  nb  53.7  缝  5.94  U  640ms
+    2/117 AB     间  67/ 65  quad  77.5  oct8  48.3  near  52.6( 42格)  nb  61.8  缝  7.44  U  825ms
+  BL     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+  BUFF   跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+    5/117 CC     间  50/ 34  quad  73.5  oct8  56.1  near  61.7( 25格)  nb  65.7  缝  5.99  U  789ms
+    6/117 CL     间 130/124  quad  81.4  oct8  65.7  near  66.7( 62格)  nb  70.6  缝  7.54  U  2240ms
+  CS     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+  CW     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+    9/117 DC     间  51/ 51  quad  91.8  oct8  79.4  near  84.2( 51格)  nb  87.3  缝  5.87  U  492ms
+   10/117 DM     间  98/ 91  quad  82.6  oct8  72.5  near  77.1( 51格)  nb  74.3  缝  6.64  U  1562ms
+  DMD    跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   12/117 DS     间  59/ 42  quad  72.0  oct8  46.8  near  63.4( 24格)  nb  68.2  缝  6.01  U  704ms
+   13/117 DSL    间  52/ 52  quad  70.6  oct8  45.6  near  56.4( 45格)  nb  61.3  缝  7.73  U  848ms
+   14/117 EU     间  78/ 78  quad  86.3  oct8  67.3  near  70.1( 61格)  nb  72.4  缝  6.33  U  973ms
+   15/117 FO     间 140/140  quad  72.7  oct8  52.8  near  67.0( 77格)  nb  63.4  缝  6.80  U  2327ms
+  FR     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   17/117 FS     间 112/112  quad  78.5  oct8  63.9  near  67.7( 80格)  nb  76.3  缝  6.15  U  1805ms
+   18/117 FT     间 174/174  quad  89.0  oct8  74.3  near  77.6( 87格)  nb  74.0  缝  6.43  U  3405ms
+  FW     跳过 LookupError: 没有真值（map_fw.txt）
+  GH     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+  GR     跳过 LookupError: 无可配对（1 间 / 0 边）
+   22/117 GS     间 100/ 94  quad  89.8  oct8  77.0  near  83.5( 52格)  nb  83.6  缝  6.09  U  1171ms
+   23/117 GU     间  76/ 76  quad  79.0  oct8  59.3  near  59.9( 48格)  nb  61.7  缝  6.91  U  934ms
+   24/117 GW     间 124/ 49  quad  88.3  oct8  68.8  near  78.8( 41格)  nb  86.3  缝  6.00  U  1716ms
+   25/117 HC     间  65/ 65  quad  87.0  oct8  59.0  near  71.2( 78格)  nb  74.2  缝  6.13  D  805ms
+   26/117 HG     间  35/ 35  quad  96.5  oct8  88.4  near  92.5( 31格)  nb  95.6  缝  5.42  U  327ms
+   27/117 HH     间  68/ 68  quad  78.8  oct8  59.7  near  68.4( 23格)  nb  71.1  缝  7.85  U  925ms
+   28/117 HI     间  74/ 46  quad  81.4  oct8  64.3  near  67.3( 27格)  nb  76.9  缝  6.32  U  947ms
+   29/117 HR     间  84/ 84  quad  72.5  oct8  50.5  near  58.3( 54格)  nb  60.8  缝 13.80  U  1303ms
+  IN     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   31/117 IS     间  56/ 56  quad  54.4  oct8  39.3  near  52.3( 37格)  nb  59.7  缝 10.51  U  772ms
+   32/117 KF     间  79/ 79  quad  82.8  oct8  58.0  near  62.1( 54格)  nb  60.9  缝  8.23  U  1399ms
+   33/117 LC     间  89/ 86  quad  81.6  oct8  61.5  near  66.1( 70格)  nb  66.0  缝 10.34  U  1470ms
+   34/117 LF     间  61/ 46  quad  81.9  oct8  65.1  near  68.9( 40格)  nb  72.9  缝  8.15  U  1002ms
+   35/117 LH     间  18/ 18  quad  97.4  oct8  88.9  near  93.6( 28格)  nb  88.9  缝  6.00  U  174ms
+   36/117 LM     间  90/ 78  quad  75.2  oct8  58.4  near  63.6( 48格)  nb  60.2  缝 11.61  U  1377ms
+  LW     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   38/117 MD     间  60/ 60  quad  79.8  oct8  64.5  near  66.6( 27格)  nb  57.7  缝  6.10  U  542ms
+  MF     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+  ML     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   41/117 MS     间 142/130  quad  70.6  oct8  49.9  near  59.2( 58格)  nb  65.6  缝  9.15  U  2551ms
+   42/117 MW     间  52/ 52  quad  61.2  oct8  40.3  near  55.5( 65格)  nb  60.4  缝  8.04  U  687ms
+   43/117 NF     间  27/ 27  quad  79.2  oct8  59.3  near  70.7( 15格)  nb  67.9  缝  5.69  U  168ms
+  NLA    跳过 LookupError: 没有真值（map_nla.txt）
+   45/117 NP     间  71/ 71  quad  91.5  oct8  85.0  near  85.3( 42格)  nb  88.8  缝  5.70  U  636ms
+   46/117 O7     间 110/108  quad  95.8  oct8  84.5  near  90.4( 58格)  nb  96.5  缝  5.25  U  1231ms
+   47/117 OE     间 101/ 97  quad  92.6  oct8  82.2  near  83.6(103格)  nb  66.7  缝  6.33  U  1638ms
+   48/117 OL     间  98/ 98  quad  71.9  oct8  51.4  near  57.4( 53格)  nb  55.9  缝 10.62  D  1431ms
+   49/117 OZ     间 108/108  quad  91.3  oct8  77.4  near  80.6(138格)  nb  67.2  缝  4.85  D  1955ms
+  PA     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   51/117 PV     间  44/ 44  quad  53.6  oct8  32.1  near  64.1( 18格)  nb  67.3  缝  4.74  U  482ms
+  RF     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   53/117 RG     间 138/135  quad  87.2  oct8  69.1  near  77.1( 71格)  nb  66.7  缝  6.03  U  1687ms
+   54/117 RGN    间  52/ 52  quad  84.3  oct8  59.8  near  69.2( 48格)  nb  76.7  缝  5.84  D  413ms
+   55/117 RM     间 104/101  quad  72.7  oct8  52.9  near  60.6( 47格)  nb  62.6  缝 10.23  U  1770ms
+   56/117 RW2    间 184/184  quad  75.3  oct8  57.0  near  66.1( 62格)  nb  61.2  缝  8.14  U  3181ms
+   57/117 SB     间  96/ 56  quad  85.4  oct8  73.0  near  75.9( 71格)  nb  71.9  缝  6.21  U  2077ms
+  SC     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+  SD     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   60/117 SE     间  74/ 73  quad  68.2  oct8  48.2  near  61.1( 50格)  nb  58.4  缝 11.81  U  918ms
+   61/117 SEC    间 114/114  quad  90.1  oct8  77.9  near  82.9(109格)  nb  78.0  缝  5.97  U  2193ms
+   62/117 SH     间  94/ 68  quad  78.6  oct8  51.0  near  65.7( 52格)  nb  82.4  缝  6.64  U  1562ms
+   63/117 SI     间  68/ 36  quad  83.2  oct8  66.2  near  75.9( 33格)  nb  72.5  缝  6.23  U  999ms
+  SK     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   65/117 SL     间  96/ 55  quad  78.9  oct8  63.3  near  61.7( 54格)  nb  66.7  缝  8.51  U  1875ms
+   66/117 SS     间  82/ 67  quad  84.5  oct8  69.1  near  71.9( 46格)  nb  80.0  缝  5.91  U  1235ms
+   67/117 SU     间  67/ 51  quad  89.7  oct8  74.0  near  83.0( 32格)  nb  90.2  缝  6.04  U  798ms
+   68/117 T1     间   8/  8  quad  89.3  oct8  82.1  near  66.7( 10格)  nb  85.7  缝  6.00  U  33ms
+   69/117 TL     间 116/114  quad  75.6  oct8  50.3  near  56.5( 78格)  nb  47.1  缝 17.98  U  3897ms
+  TM     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   71/117 TR     间 111/ 88  quad  87.1  oct8  75.4  near  78.8( 76格)  nb  63.6  缝  6.00  U  1708ms
+   72/117 TX     间 118/118  quad  69.0  oct8  44.2  near  53.3( 69格)  nb  55.6  缝 14.26  U  2336ms
+  UB     跳过 LookupError: 没有真值（map_ub.txt）
+  UF     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   75/117 UG     间  47/ 44  quad  74.8  oct8  52.8  near  58.1( 24格)  nb  72.3  缝  7.24  U  515ms
+  US     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+   77/117 UW     间  57/ 46  quad  93.7  oct8  85.7  near  90.5( 67格)  nb  83.0  缝  6.19  U  776ms
+   78/117 VS     间  81/ 69  quad  83.3  oct8  65.9  near  72.6( 55格)  nb  69.0  缝  6.67  U  1180ms
+   79/117 VX     间 160/160  quad  90.1  oct8  77.3  near  79.7( 87格)  nb  75.8  缝  5.96  U  3011ms
+   80/117 WAO7   间  38/ 38  quad  94.7  oct8  86.3  near  90.6( 28格)  nb  94.9  缝  4.87  U  250ms
+   81/117 WARA   间  27/ 27  quad  83.2  oct8  65.2  near  62.2( 30格)  nb  60.7  缝  6.45  U  201ms
+   82/117 WARB   间  47/ 47  quad  65.0  oct8  51.9  near  59.2( 30格)  nb  70.4  缝  6.08  U  455ms
+   83/117 WARC   间  67/ 67  quad  85.9  oct8  68.2  near  71.6( 47格)  nb  60.8  缝  6.73  U  822ms
+   84/117 WARD   间  67/ 67  quad  44.6  oct8  24.4  near  40.4( 32格)  nb  66.2  缝  7.72  U  939ms
+   85/117 WARE   间  45/ 45  quad  89.7  oct8  81.0  near  83.1( 24格)  nb  88.5  缝  5.99  U  319ms
+   86/117 WARF   间  95/ 95  quad  69.0  oct8  42.5  near  49.2( 45格)  nb  54.5  缝 15.05  U  1389ms
+   87/117 WARG   间  72/ 72  quad  87.6  oct8  68.5  near  70.7( 52格)  nb  65.8  缝  5.56  U  732ms
+   88/117 WAUA   间  35/ 35  quad  43.4  oct8  24.0  near  46.5( 64格)  nb  49.0  缝 15.45  U  588ms
+   89/117 WBLA   间  37/ 37  quad  90.7  oct8  75.4  near  78.1( 51格)  nb  74.5  缝  4.18  U  386ms
+   90/117 WDSR   间  16/ 16  quad  75.8  oct8  57.5  near  57.9( 11格)  nb  70.6  缝  6.62  U  98ms
+   91/117 WGWR   间  28/ 28  quad  82.8  oct8  68.0  near  65.4( 24格)  nb  71.0  缝  6.00  U  257ms
+   92/117 WHIR   间  43/ 43  quad  83.3  oct8  68.7  near  76.2( 21格)  nb  81.2  缝  6.00  U  327ms
+   93/117 WMPA   间  37/ 37  quad  90.1  oct8  80.8  near  80.5( 51格)  nb  70.7  缝  6.60  U  358ms
+   94/117 WORA   间  77/ 77  quad  90.4  oct8  78.4  near  74.7(132格)  nb  59.3  缝  7.04  U  964ms
+   95/117 WPGA   间  55/ 55  quad  76.5  oct8  51.6  near  54.8( 40格)  nb  59.3  缝  6.54  D  535ms
+   96/117 WPTA   间  33/ 33  quad  72.2  oct8  57.8  near  51.8( 24格)  nb  55.8  缝  8.43  U  409ms
+   97/117 WRFA   间  40/ 40  quad  87.7  oct8  74.2  near  75.3( 38格)  nb  79.2  缝  5.98  U  710ms
+   98/117 WRFB   间  29/ 29  quad  80.0  oct8  68.2  near  66.2( 23格)  nb  83.8  缝  7.94  U  307ms
+   99/117 WRRA   间  62/ 62  quad  87.1  oct8  76.5  near  62.4( 58格)  nb  57.9  缝  7.22  U  682ms
+  100/117 WRSA   间  16/ 16  quad  75.8  oct8  60.6  near  75.0( 31格)  nb  83.3  缝  6.00  U  169ms
+  101/117 WSKA   间  33/ 33  quad  84.8  oct8  67.0  near  67.0( 39格)  nb  67.5  缝  6.85  U  321ms
+  102/117 WSKB   间  36/ 35  quad  86.7  oct8  68.7  near  75.1( 30格)  nb  78.0  缝  5.51  U  294ms
+  103/117 WSKC   间  31/ 31  quad  92.7  oct8  83.2  near  78.9( 29格)  nb  84.8  缝  6.00  U  230ms
+  104/117 WSKD   间  46/ 46  quad  69.6  oct8  43.4  near  50.5( 25格)  nb  59.0  缝 10.27  U  563ms
+  105/117 WSSR   间  11/ 11  quad 100.0  oct8  87.3  near 100.0( 28格)  nb 100.0  缝  5.98  U  102ms
+  106/117 WSUR   间  22/ 22  quad  93.5  oct8  88.7  near  87.3( 18格)  nb  92.0  缝  5.86  U  115ms
+  107/117 WTDA   间  38/ 38  quad  80.1  oct8  55.5  near  57.0( 43格)  nb  61.4  缝  6.00  U  387ms
+  108/117 WTDB   间  46/ 44  quad  76.8  oct8  46.8  near  55.3( 59格)  nb  42.6  缝  6.22  U  519ms
+  109/117 WVWA   间  37/ 37  quad  80.3  oct8  61.7  near  71.7( 29格)  nb  81.0  缝  6.26  U  376ms
+  110/117 WVWB   间  23/ 23  quad  93.3  oct8  73.1  near  84.0( 38格)  nb  91.3  缝  6.24  U  220ms
+  XM     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+  XW     跳过 LookupError: 没有真值（map_<reg>.txt 缺失）
+  113/117 Z1     间  45/ 45  quad  96.3  oct8  87.6  near  89.2( 63格)  nb  80.0  缝  6.00  U  407ms
+  114/117 Z2     间  50/ 50  quad  85.3  oct8  70.1  near  73.2( 33格)  nb  86.0  缝  6.03  U  401ms
+  115/117 Z3     间  57/ 57  quad  88.5  oct8  78.3  near  80.4( 60格)  nb  76.3  缝  5.57  U  507ms
+  116/117 Z4     间  76/ 76  quad  89.4  oct8  66.3  near  71.1( 81格)  nb  53.9  缝  6.18  D  797ms
+  117/117 Z5     间  78/ 78  quad  72.3  oct8  62.5  near  66.7( 42格)  nb  80.0  缝  5.93  U  739ms
+
+区 92（弱区 3，无真值/失败 25）｜房间 6357｜边 7264｜可配对 236088
+quad  中位 83.0  均值 81.3  最低 43.4  最高 100.0（强区中位 82.8）
+≥95% 5 区｜≥90% 19 区｜<80% 36 区｜总耗时 91.3 s
+报表 D:\Projects\Code_Projects\RwSaveTool\build\_regmap_shape.md
+图 UW    1600x1407  30 KB  scale 2.59
+图 HI    1600x484  24 KB  scale 2.34
+图 CC    1600x1175  41 KB  scale 4.05
+图 MS    1600x961  56 KB  scale 1.96
+图 GW    1600x348  21 KB  scale 1.27
+图 WARA  1600x706  22 KB  scale 4.60

@@ -476,7 +476,7 @@ def main() -> int:
             js("document.getElementById('gx-back').click();")
             time.sleep(1.6)
             check("关系图的「← 地图」能回到区域地图",
-                  js("!!document.getElementById('map-stage')")
+                  js("!!document.getElementById('geo-stage')")
                   and js("!!document.getElementById('map-side')"), "")
             has_reset = js("!!document.getElementById('map-mark-reset')")
             check("地图左侧栏看得到手动标记并给出还原按钮", has_reset, "")

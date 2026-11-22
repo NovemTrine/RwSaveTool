@@ -1,16 +1,16 @@
-"""区域地图（矢量版）与未探索清单的回归检查（真实 WebView2 窗口）。
+"""区域地图（几何图 + 房间清单）与区域页总览的回归检查（真实 WebView2 窗口）。
 
 用法： .venv/Scripts/python.exe build/check_map.py
 
-检查内容：
-    1. 区域表仍能打开地图弹窗，弹窗里**没有 canvas**（底图走 SVG <image>，P0 起可选叠加）
-    1b. 底图层：默认关闭；打开后加载到 data URL、与房间方块坐标同源；关掉能恢复
-    2. SVG 房间方块数量 = 有坐标的房间数；已探索方块 = 完成度的 visited
-    3. 未探索清单条数 = total − visited（与区域表同一口径）
-    4. 地图层按钮：全部 + 各层；切层后 viewBox 变化
-    5. 点未探索房间号 → 对应方块获得 focus 高亮
-    6. 区域页底部出现「没踏足过的导入区域」入口
-产物： docs/map_vector.png（窗口截图）
+V1.20（2026-11-22）起**区域地图就是几何图**，方块图整体下线，所以这里验的是：
+    1. 区域页的总览 / 选择器 / 「没踏足过的区域」入口仍然可用
+    2. 打开地图 → 弹窗里是 `#geo-stage` + `regmap_svg` 出的 SVG，没有 canvas
+    3. 方块图遗物一个不剩：无 `#map-base`、无 `#map-layers`、无 `.map-sheet`、无 `rect.room`
+    4. 右侧清单分母 = 几何图上的房间（唯一真值）；「图上没有」单独成栏
+    5. 三个标签与地图联动：计数自洽、`data-filter` 压暗、点房号居中高亮
+    6. 缩放/平移走 viewBox；放大 2.2 倍自动换高清层
+    7. 「区域拓扑」还能进能回（回到几何图）
+产物： build/_shots/map_geo.bmp / map_geo_light.bmp / map_zoom.bmp
 """
 
 from __future__ import annotations
@@ -34,7 +34,6 @@ import webview  # noqa: E402
 from core.bridge import Api  # noqa: E402
 
 TITLE = "RwSaveTool 地图检查"
-OUT_PNG = os.path.join(SHOTS, "map_vector.png")
 
 user32 = ctypes.windll.user32
 gdi32 = ctypes.windll.gdi32
@@ -279,16 +278,23 @@ def main() -> int:
                   ("White" not in (pc.get("pick") or {})),
                   f"cells={pc.get('cells')} pick={pc.get('pick')}")
 
-            # 点总览格子 → 打开对应区域地图
+            # 点总览格子 → 打开对应区域地图（V1.20：区域地图 = 几何图 + 房间清单）
             out["ovOpen"] = js(
                 "(function(){var c=document.querySelector('.ov-cell[data-map]');if(!c) return null;"
                 "var code=c.getAttribute('data-map'); c.click(); return code;})()"
             )
-            time.sleep(0.8)
-            check("点总览格子能打开地图",
-                  bool(js("!document.getElementById('modal').hidden && "
-                          "!!document.getElementById('map-svg')")),
-                  str(out["ovOpen"]))
+            time.sleep(4.2)          # 几何图是现算的（冷启动 3 s 上下）
+            out["ovModal"] = loads(js(
+                "JSON.stringify((function(){"
+                "var st=document.getElementById('geo-stage');"
+                "return {open:!document.getElementById('modal').hidden, stage:!!st,"
+                "svg:!!(st&&st.querySelector('svg.geo-svg')),"
+                "rooms:st?st.querySelectorAll('.rm[data-room]').length:0};})())"
+            ))
+            om = out["ovModal"] or {}
+            check("点总览格子能打开地图", om.get("open") and om.get("stage"), str(out["ovOpen"]))
+            check("地图是几何图（有 SVG、有房间组）",
+                  om.get("svg") and (om.get("rooms") or 0) > 0, str(om))
             js("var b=document.getElementById('modal-close'); if(b) b.click();")
             time.sleep(0.5)
             grab(os.path.join(SHOTS, "overview.bmp"))
@@ -298,319 +304,228 @@ def main() -> int:
                 "(function(){var b=document.querySelector('[data-map=\"GW\"]')||document.querySelector('[data-map]');"
                 "if(!b) return null; var code=b.getAttribute('data-map'); b.click(); return code;})()"
             )
-            time.sleep(1.0)
+            time.sleep(4.2)
 
             out["modal"] = loads(js(
                 "JSON.stringify((function(){"
-                "var svg=document.getElementById('map-svg');"
+                "var st=document.getElementById('geo-stage'); var svg=st&&st.querySelector('svg');"
                 "return {open:!document.getElementById('modal').hidden,"
                 "title:(document.getElementById('modal-title')||{}).textContent,"
                 "sub:(document.getElementById('modal-sub')||{}).textContent,"
                 "hasSvg:!!svg, hasCanvas:!!document.querySelector('#modal-body canvas'),"
-                "rects:document.querySelectorAll('#map-svg rect.room').length,"
-                "seen:document.querySelectorAll('#map-svg rect.room.seen').length,"
-                "links:document.querySelectorAll('#map-svg line.link').length,"
-                "pearls:document.querySelectorAll('#map-svg circle.pearl').length,"
+                "rooms:st?st.querySelectorAll('.rm[data-room]').length:0,"
+                "seen:st?st.querySelectorAll('.rm.seen').length:0,"
+                "links:svg?svg.querySelectorAll('.ln').length:0,"
                 "layers:document.querySelectorAll('#map-layers [data-ml]').length,"
-                "chips:document.querySelectorAll('#mu-body .mu-chip').length,"
-                "nocoord:document.querySelectorAll('#mu-body .mu-chip.nocoord').length,"
+                # 方块图的三件遗物：底图、图纸底板、方块矩形。必须一个都不剩
+                "block:!!document.getElementById('map-base')||!!document.querySelector('.map-sheet')"
+                "||!!document.querySelector('#map-svg rect.room'),"
+                "chips:document.querySelectorAll('#mu-body .mu-chip[data-focus]').length,"
+                "nofile:document.querySelectorAll('#mu-body .mu-chip[data-nofile]').length,"
+                "stat:(document.getElementById('map-stat')||{}).textContent||'',"
+                "meta:(document.getElementById('geo-meta')||{}).textContent||'',"
                 "empty:!!document.querySelector('.map-empty')};})())"
             ))
             m = out["modal"] or {}
-            check("地图弹窗打开", m.get("open"))
-            check("弹窗里没有 canvas（底图走 SVG image）", m.get("hasSvg") and not m.get("hasCanvas"))
-            check("画出了房间方块", (m.get("rects") or 0) > 0, f"rects={m.get('rects')}")
-            check("分层按钮存在", (m.get("layers") or 0) >= 2, f"layers={m.get('layers')}")
+            o = out["ovModal"] or {}
+            check("地图弹窗打开", m.get("open"), str(m.get("title")))
+            check("弹窗里没有 canvas（纯 SVG 矢量）",
+                  m.get("hasSvg") and not m.get("hasCanvas"), str(m)[:120])
+            check("画出了房间（.rm[data-room]）", (m.get("rooms") or 0) > 0, f"rooms={m.get('rooms')}")
+            check("方块图彻底下线（无底图 / 层按钮 / 图纸底板 / 方块矩形）",
+                  not m.get("block") and not m.get("layers"), str(m)[:160])
+            check("几何图有连线", (m.get("links") or 0) > 0, f"links={m.get('links')}")
+            check("工具栏只剩「区域拓扑 / 设置」，没有「几何图 / 底图」",
+                  js("!document.getElementById('map-geo') && !document.getElementById('map-base-btn')"
+                     " && !!document.getElementById('map-graph')"))
 
-            # ---- 底图层（P0）：默认关；开关后叠上游戏底图，且与房间方块同源 ----
-            out["baseOff"] = loads(js("JSON.stringify(window.__rwTest.mapBase())"))
-            check("底图默认关闭（不盖住房间方块）",
-                  bool(out["baseOff"]) and not out["baseOff"].get("on"), str(out["baseOff"]))
-
-            js("var b=document.getElementById('map-base-btn'); if(b) b.click();")
-            time.sleep(0.9)          # 桥接读图 + 淡入
-            out["baseOn"] = loads(js("JSON.stringify(window.__rwTest.mapBase())"))
-            bo = out["baseOn"] or {}
-            check("打开底图后加载到 data URL",
-                  bo.get("on") and str(bo.get("url") or "").startswith("data:image/png"), str(bo))
-            check("底图尺寸不是 0×0",
-                  (bo.get("w") or 0) > 100 and (bo.get("h") or 0) > 100,
-                  f"w={bo.get('w')} h={bo.get('h')}")
-
-            out["baseBox"] = loads(js(
+            # ---- 清单分母 = 几何图上的房间（唯一真值） ----
+            out["muAll"] = loads(js(
                 "JSON.stringify((function(){"
-                "var rs=[].slice.call(document.querySelectorAll('#map-svg rect.room'));"
-                "var x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity;"
-                "rs.forEach(function(r){var x=+r.getAttribute('x'),y=+r.getAttribute('y'),"
-                "w=+r.getAttribute('width'),h=+r.getAttribute('height');"
-                "if(x<x1)x1=x; if(y<y1)y1=y; if(x+w>x2)x2=x+w; if(y+h>y2)y2=y+h;});"
-                "var el=document.getElementById('map-base');"
-                "var bw=el?(+el.getAttribute('width')||0):0, bh=el?(+el.getAttribute('height')||0):0;"
-                "return {x1:x1,y1:y1,x2:x2,y2:y2,w:bw,h:bh,"
-                "cover:((Math.min(x2,bw)-Math.max(x1,0))*(Math.min(y2,bh)-Math.max(y1,0)))"
-                "/(Math.max(1e-6,(x2-x1)*(y2-y1)))};})())"
+                "document.querySelector('[data-mu=\"all\"]').click();"
+                "return {chips:document.querySelectorAll('#mu-body .mu-chip[data-focus]').length,"
+                "nofile:document.querySelectorAll('#mu-body .mu-chip[data-nofile]').length,"
+                "rooms:document.querySelectorAll('#geo-stage .rm[data-room]').length,"
+                "split:document.querySelectorAll('#mu-body .mu-split').length,"
+                "on:document.querySelector('[data-mu].on').getAttribute('data-mu')};})())"
             ))
-            bb = out["baseBox"] or {}
-            check("底图与房间方块有实际重叠（坐标同源）",
-                  (bb.get("cover") or 0) > 0.3,
-                  "cover=%.1f%% bbox=%s,%s-%s,%s img=%sx%s" % (
-                      (bb.get("cover") or 0) * 100, bb.get("x1"), bb.get("y1"),
-                      bb.get("x2"), bb.get("y2"), bb.get("w"), bb.get("h")))
+            ma = out["muAll"] or {}
+            check("「全部」标签的清单条数 = 几何图上的房间数（分母以图为真值）",
+                  ma.get("chips") == ma.get("rooms") and (ma.get("rooms") or 0) > 0,
+                  f"chips={ma.get('chips')} rooms={ma.get('rooms')}")
+            check("清单有、图上没有的房间单独成栏（有就显示分隔）",
+                  (ma.get("nofile") or 0) == 0 or ma.get("split") == 1,
+                  f"nofile={ma.get('nofile')} split={ma.get('split')}")
 
-            time.sleep(0.4)
-            grab(os.path.join(SHOTS, "map_base_on.bmp"))
-
-            # 观感约束要能被读出来，不能只靠肉眼看截图
-            out["baseCss"] = loads(js(
-                "JSON.stringify((function(){var el=document.getElementById('map-base');"
-                "if(!el) return {}; var cs=getComputedStyle(el);"
-                "return {opacity:cs.opacity, filter:cs.filter};})())"
-            ))
-            bc = out["baseCss"] or {}
-            check("底图压暗 + 降饱和真的生效（不抢房间方块）",
-                  (float(bc.get("opacity") or 1) < 0.5)
-                  and ("saturate" in str(bc.get("filter") or "")),
-                  str(bc))
-
-            js("var b=document.getElementById('map-base-btn'); if(b) b.click();")
-            time.sleep(0.4)
-            out["baseOffAgain"] = loads(js("JSON.stringify(window.__rwTest.mapBase())"))
-            check("底图能关掉并恢复原状",
-                  bool(out["baseOffAgain"]) and not out["baseOffAgain"].get("on"),
-                  str(out["baseOffAgain"]))
-
-            # 与完成度对账
-            code = out.get("openTarget")
-            out["completion"] = loads(js(
-                "JSON.stringify(window.__rwTest.region('%s','White'))" % code
-            ))
-            cp = out["completion"] or {}
-            expect_unvisited = None
-            if cp.get("total") is not None and cp.get("visited") is not None:
-                expect_unvisited = cp["total"] - cp["visited"]
-            # 分母里有少数房间没有任何一版地图给坐标，画不出来但仍在清单里
-            no_coord_total = (cp.get("total") or 0) - (m.get("rects") or 0)
-            no_coord_seen = no_coord_total - (m.get("nocoord") or 0)
-            check("已探索方块数 = visited − 无坐标的已访房间",
-                  cp.get("visited") == (m.get("seen") or 0) + no_coord_seen,
-                  f"visited={cp.get('visited')} seen={m.get('seen')} 无坐标已访={no_coord_seen}")
-            check("未探索清单条数 = total − visited",
-                  expect_unvisited == m.get("chips"),
-                  f"expect={expect_unvisited} chips={m.get('chips')}")
-
-            # ---- 清单三标签：全部 / 未探索 / 已探索 ----
+            # ---- 三个标签与地图联动 ----
             out["muTabs"] = loads(js(
                 "JSON.stringify((function(){var t=document.querySelectorAll('[data-mu]');"
-                "if(!t.length) return {none:true};"
                 "var r={tabs:t.length, on:[], counts:{}};"
                 "Array.prototype.forEach.call(t,function(b){"
                 "  if(b.classList.contains('on')) r.on.push(b.getAttribute('data-mu'));"
                 "  r.counts[b.getAttribute('data-mu')]=parseInt(b.querySelector('b').textContent,10);});"
-                "r.chips=document.querySelectorAll('#mu-body .mu-chip').length;"
+                "r.seen=document.querySelectorAll('#geo-stage .rm.seen').length;"
                 "return r;})())"
             )) or {}
             tabs = out["muTabs"]
             check("清单有三个标签：全部 / 未探索 / 已探索",
-                  tabs.get("tabs") == 3 and tabs.get("on") == ["unseen"], str(tabs))
-            check("标签数字对账：全部 = 未探索 + 已探索",
-                  tabs.get("counts", {}).get("unseen") == expect_unvisited
-                  and tabs["counts"]["all"] == tabs["counts"]["unseen"] + tabs["counts"]["seen"],
-                  f"{tabs.get('counts')}（未探索应 = {expect_unvisited}）")
+                  tabs.get("tabs") == 3 and tabs.get("on") == ["all"], str(tabs))
+            check("标签计数自洽：全部 = 未探索 + 已探索",
+                  tabs.get("counts", {}).get("all")
+                  == (tabs.get("counts", {}).get("unseen") or 0) + (tabs.get("counts", {}).get("seen") or 0),
+                  str(tabs.get("counts")))
+            check("「已探索」数 = 图上带 seen 类的房间数",
+                  tabs.get("counts", {}).get("seen") == tabs.get("seen"),
+                  f"tab={tabs.get('counts', {}).get('seen')} svg={tabs.get('seen')}")
 
-            out["muSwitch"] = loads(js(
-                "JSON.stringify((function(){"
-                "document.querySelector('[data-mu=\\\"seen\\\"]').click();"
-                "var seenN=document.querySelectorAll('#mu-body .mu-chip').length;"
-                "var seenMarked=document.querySelectorAll('#mu-body .mu-chip.seen').length;"
-                "var onSeen=document.querySelector('[data-mu].on').getAttribute('data-mu');"
-                "document.querySelector('[data-mu=\\\"all\\\"]').click();"
-                "var allN=document.querySelectorAll('#mu-body .mu-chip').length;"
-                "var allSeen=document.querySelectorAll('#mu-body .mu-chip.seen').length;"
-                "document.querySelector('[data-mu=\\\"unseen\\\"]').click();"
-                "var backN=document.querySelectorAll('#mu-body .mu-chip').length;"
-                "return {onSeen:onSeen, seenN:seenN, seenMarked:seenMarked,"
-                "allN:allN, allSeen:allSeen, backN:backN};})())"
-            )) or {}
-            sw = out["muSwitch"]
-            check("切到「已探索」列出所有去过的房间",
-                  sw.get("onSeen") == "seen" and sw.get("seenN") == tabs["counts"]["seen"]
-                  and sw.get("seenMarked") == sw.get("seenN"), str(sw))
-            check("「全部」标签把两边合起来，并标出哪些去过",
-                  sw.get("allN") == tabs["counts"]["all"] and sw.get("allSeen") == tabs["counts"]["seen"],
-                  str(sw))
-            check("切回「未探索」恢复原样", sw.get("backN") == expect_unvisited, str(sw))
-
-            # 标签与地图联动：不在当前标签里的方块要压暗（先清掉之前点击留下的 focus）
-            out["muDim"] = loads(js(
+            out["muSeen"] = loads(js(
                 "JSON.stringify((function(){"
                 "var st=document.createElement('style');"
                 "st.textContent='*{transition:none!important}';document.head.appendChild(st);"
-                "var rs=[].slice.call(document.querySelectorAll('#map-svg rect.room'));"
-                "rs.forEach(function(r){r.classList.remove('focus');});"
-                "function op(el){return parseFloat(getComputedStyle(el).opacity);}"
-                "var unseenRect=rs.filter(function(r){return r.getAttribute('data-seen')==='0';})[0];"
-                "var seenRect=rs.filter(function(r){return r.getAttribute('data-seen')==='1';})[0];"
-                "var r={};"
-                "document.querySelector('[data-mu=\\\"unseen\\\"]').click();"
-                "r.attrUnseen=document.getElementById('map-stage').getAttribute('data-filter');"
-                "r.unseenOpUnseen=unseenRect?op(unseenRect):null;"
-                "r.seenOpUnseen=seenRect?op(seenRect):null;"
-                "r.hintUnseen=(document.getElementById('mu-hint')||{}).textContent||'';"
-                "document.querySelector('[data-mu=\\\"seen\\\"]').click();"
-                "r.attrSeen=document.getElementById('map-stage').getAttribute('data-filter');"
-                "r.unseenOpSeen=unseenRect?op(unseenRect):null;"
-                "r.seenOpSeen=seenRect?op(seenRect):null;"
-                "document.querySelector('[data-mu=\\\"all\\\"]').click();"
-                "r.unseenOpAll=unseenRect?op(unseenRect):null;"
-                "r.seenOpAll=seenRect?op(seenRect):null;"
-                "document.querySelector('[data-mu=\\\"unseen\\\"]').click();"
+                "document.querySelector('[data-mu=\"seen\"]').click();"
+                "var chips=document.querySelectorAll('#mu-body .mu-chip[data-focus]');"
+                "var marked=document.querySelectorAll('#mu-body .mu-chip.seen').length;"
+                "var stage=document.getElementById('geo-stage');"
+                "var filter=stage.getAttribute('data-filter');"
+                "var dim=[].slice.call(stage.querySelectorAll('.rm.dim'));"
+                "var op=dim.length?parseFloat(getComputedStyle(dim[0]).opacity):null;"
+                "var keep=[].slice.call(stage.querySelectorAll('.rm.seen'));"
+                "var opSeen=keep.length?parseFloat(getComputedStyle(keep[0]).opacity):null;"
+                "document.querySelector('[data-mu=\"unseen\"]').click();"
+                "var un=document.querySelectorAll('#mu-body .mu-chip[data-focus]').length;"
+                "var hint=(document.getElementById('mu-hint')||{}).textContent||'';"
                 "st.remove();"
-                "return r;})())"
+                "return {chips:chips.length, marked:marked, filter:filter, dimOpacity:op,"
+                "seenOpacity:opSeen, unseen:un, hint:hint};})())"
             )) or {}
-            dim = out["muDim"]
-            check("切标签会把状态写到地图上（data-filter）",
-                  dim.get("attrUnseen") == "unseen" and dim.get("attrSeen") == "seen", str(dim))
-            check("「未探索」标签下已探索方块变暗、未探索保持原样",
-                  dim.get("seenOpUnseen") is not None and dim.get("seenOpUnseen") < 0.3
-                  and dim.get("unseenOpUnseen") == 1, str(dim))
-            check("「已探索」标签下未探索方块变暗、已探索保持原样",
-                  dim.get("unseenOpSeen") is not None and dim.get("unseenOpSeen") < 0.3
-                  and dim.get("seenOpSeen") == 1, str(dim))
-            check("「全部」标签两边都不压暗",
-                  dim.get("unseenOpAll") == 1 and dim.get("seenOpAll") == 1, str(dim))
-            check("标签提示文案跟着变",
-                  "已探索" in (dim.get("hintUnseen") or ""), str(dim.get("hintUnseen")))
+            sw = out["muSeen"]
+            check("「已探索」标签只列去过的房间，且都带标记",
+                  sw.get("chips") == tabs["counts"]["seen"] and sw.get("marked") == sw.get("chips"),
+                  str(sw))
+            check("切标签把状态写到舞台（data-filter）", sw.get("filter") == "seen", str(sw))
+            check("「已探索」标签下未探索的房间变暗",
+                  sw.get("dimOpacity") is not None and sw.get("dimOpacity") < 0.3
+                  and sw.get("seenOpacity") == 1, str(sw))
+            check("切回「未探索」恢复原样",
+                  sw.get("unseen") == tabs["counts"]["unseen"]
+                  and "已探索" in (sw.get("hint") or ""), str(sw.get("hint")))
 
-            # 拍一张「已探索」标签：地图上没去过的那片是暗的
-            js("document.querySelector('[data-mu=\\\"seen\\\"]').click();")
-            time.sleep(0.5)
-            grab(os.path.join(SHOTS, "map_tabs_dim.bmp"))
-            js("document.querySelector('[data-mu=\\\"unseen\\\"]').click();")
-
-            # 拍一张「全部」标签的清单：能同时看到去过 / 没去过的房间号
-            js("document.querySelector('[data-mu=\\\"all\\\"]').click();")
-            time.sleep(0.5)
-            grab(os.path.join(SHOTS, "map_tabs.bmp"))
-            js("document.querySelector('[data-mu=\\\"unseen\\\"]').click();")
-
-            # 切层
-            out["layer"] = loads(js(
-                "JSON.stringify((function(){"
-                "var svg=document.getElementById('map-svg'); var before=svg.getAttribute('viewBox');"
-                "var b=document.querySelector('#map-layers [data-ml=\"1\"]');"
-                "if(!b) return {skip:true}; b.click();"
-                "var after=svg.getAttribute('viewBox');"
-                "var vis=[].slice.call(document.querySelectorAll('#map-svg rect.room')).filter("
-                "function(r){return getComputedStyle(r).display!=='none';}).length;"
-                "return {before:before, after:after, visible:vis,"
-                "onText:document.querySelector('#map-layers .sort-btn.on').textContent.trim()};})())"
-            ))
-            out["layerAll"] = loads(js(
-                "JSON.stringify((function(){"
-                "var b=document.querySelector('#map-layers [data-ml=\"all\"]'); if(b) b.click();"
-                "var vis=[].slice.call(document.querySelectorAll('#map-svg rect.room')).filter("
-                "function(r){return getComputedStyle(r).display!=='none';}).length;"
-                "return {visible:vis};})())"
-            ))
-            check("切到某一层后可见房间变少",
-                  (out["layer"].get("visible") or 0) < (m.get("rects") or 0),
-                  f"layer={out['layer']}")
-
-            # 点未探索房间号 → 高亮 + 居中放大
+            # ---- 点房间号：居中放大 + 高亮（房间卡会盖在上面，验完关掉） ----
             out["focus"] = loads(js(
                 "JSON.stringify((function(){"
-                "var c=document.querySelector('#mu-body .mu-chip:not(.nocoord)');"
-                "if(!c) return {skip:true}; var name=c.getAttribute('data-focus'); c.click();"
-                "var r=document.querySelector('#map-svg [data-room=\"'+name+'\"]');"
-                "var svg=document.getElementById('map-svg');"
-                "return {name:name, focused:!!(r&&r.classList.contains('focus')),"
-                "tf:svg.style.transform,"
-                "pct:document.getElementById('map-zoom-pct').textContent};})())"
-            ))
-            check("点房间号能高亮对应方块", (out["focus"] or {}).get("focused"), str(out["focus"]))
-            check("点房间号会把地图居中放大",
-                  bool((out["focus"] or {}).get("tf")),
-                  f"transform={(out['focus'] or {}).get('tf')} pct={(out['focus'] or {}).get('pct')}")
+                "var c=document.querySelector('#mu-body .mu-chip[data-focus]');"
+                "if(!c) return {skip:true}; var name=c.getAttribute('data-focus');"
+                "var svg=document.querySelector('#geo-stage svg');"
+                "var before=svg.getAttribute('viewBox');"
+                "var st=document.getElementById('geo-stage');"
+                "var fitW=Math.min(st.clientWidth,st.clientHeight);"
+                "c.click();"
+                "var g=null; [].forEach.call(document.querySelectorAll('#geo-stage .rm[data-room]'),"
+                "function(el){if(!g&&String(el.getAttribute('data-room')).toUpperCase()===name.toUpperCase()) g=el;});"
+                "return {name:name, focused:!!(g&&g.classList.contains('focus')),"
+                "before:before, after:svg.getAttribute('viewBox'),"
+                "pct:(document.getElementById('geo-pct')||{}).textContent||'',"
+                "card:!!document.querySelector('.room-modal:not([hidden])')};})())"
+            )) or {}
+            fc = out["focus"]
+            check("点房间号能高亮对应房间", fc.get("focused"), str(fc)[:140])
+            check("点房间号会把图居中放大（viewBox 变小、百分比变大）",
+                  fc.get("before") != fc.get("after")
+                  and int((fc.get("pct") or "0%").rstrip("%")) > 100,
+                  f"{fc.get('before')} → {fc.get('after')} pct={fc.get('pct')}")
+            check("点房间号顺带打开房间卡（沿用旧约定）", fc.get("card"), str(fc.get("card")))
 
-            # ---- 缩放 / 平移 ----
+            # ---- 缩放 / 平移：改 viewBox，不改 transform ----
             out["zoom"] = loads(js(
                 "JSON.stringify((function(){"
-                "var stage=document.getElementById('map-stage'), svg=document.getElementById('map-svg');"
-                "var b=document.getElementById('modal-body');"
-                "var box=stage.getBoundingClientRect();"
-                "document.querySelector('#map-zoom [data-zoom=\"reset\"]').click();"
-                "var atFit=svg.style.transform || '';"
-                "svg.dispatchEvent(new WheelEvent('wheel',{deltaY:-600,clientX:box.left+300,"
+                "var st=document.getElementById('geo-stage'), svg=st.querySelector('svg');"
+                "document.querySelector('#geo-zoom [data-gz=\"fit\"]').click();"
+                "var vb0=svg.getAttribute('viewBox'); var tf0=svg.style.transform||'';"
+                "document.querySelector('#geo-zoom [data-gz=\"in\"]').click();"
+                "document.querySelector('#geo-zoom [data-gz=\"in\"]').click();"
+                "var vb1=svg.getAttribute('viewBox');"
+                "var pct=(document.getElementById('geo-pct')||{}).textContent||'';"
+                "var box=st.getBoundingClientRect();"
+                "st.dispatchEvent(new MouseEvent('mousedown',{button:0,clientX:box.left+300,"
                 "clientY:box.top+200,bubbles:true,cancelable:true}));"
-                "var zoomed=svg.style.transform;"
-                "var pct=document.getElementById('map-zoom-pct').textContent;"
-                # 拖拽：放大后按住左键往左上拖 60 / 40 px
-                "stage.dispatchEvent(new MouseEvent('mousedown',{button:0,clientX:box.left+400,"
-                "clientY:box.top+300,bubbles:true,cancelable:true}));"
-                "window.dispatchEvent(new MouseEvent('mousemove',{clientX:box.left+340,"
-                "clientY:box.top+260,bubbles:true}));"
-                "var dragged=svg.style.transform;"
+                "window.dispatchEvent(new MouseEvent('mousemove',{clientX:box.left+240,"
+                "clientY:box.top+160,bubbles:true}));"
+                "var vb2=svg.getAttribute('viewBox');"
+                "var dragCls=st.classList.contains('dragging');"
                 "window.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));"
-                "var draggingCls=stage.classList.contains('dragging');"
-                "document.querySelector('#map-zoom [data-zoom=\"reset\"]').click();"
-                "var reset=svg.style.transform || '';"
-                "svg.dispatchEvent(new WheelEvent('wheel',{deltaY:-600,clientX:box.left+300,"
-                "clientY:box.top+200,bubbles:true,cancelable:true}));"
-                "var again=svg.style.transform;"
-                "stage.dispatchEvent(new WheelEvent('wheel',{deltaY:2400,clientX:box.left+300,"
-                "clientY:box.top+200,bubbles:true,cancelable:true}));"
-                "var outPct=document.getElementById('map-zoom-pct').textContent;"
-                "return {atFit:atFit, zoomed:zoomed, pct:pct, dragged:dragged,"
-                "draggingCls:draggingCls, reset:reset, again:again, outPct:outPct,"
-                "svgW:svg.clientWidth, svgH:svg.clientHeight,"
-                "stageH:stage.clientHeight,"
-                "fill:Math.abs(svg.clientHeight-(stage.clientHeight-24))<5};})())"
-            ))
-            z = out["zoom"] or {}
-            check("滚轮能把地图放大", bool(z.get("zoomed")), f"transform={z.get('zoomed')}")
-            check("缩放百分比跟着变", (z.get("pct") or "100%") != "100%", f"pct={z.get('pct')}")
-            check("拖拽改变平移量", bool(z.get("dragged")) and z.get("dragged") != z.get("zoomed"),
-                  f"{z.get('zoomed')} → {z.get('dragged')}")
-            check("松开鼠标后退出拖拽态", not z.get("draggingCls"))
-            check("复位回到 100%", not z.get("reset"), f"transform={z.get('reset')!r}")
-            check("缩小到下限不会小于 1 倍",
-                  (z.get("outPct") or "") >= "100", f"outPct={z.get('outPct')}")
-            check("SVG 撑满舞台高度（不再按内容自适应）", z.get("fill"),
-                  f"svgH={z.get('svgH')} stageH={z.get('stageH')}")
+                "document.querySelector('#geo-zoom [data-gz=\"fit\"]').click();"
+                "var vb3=svg.getAttribute('viewBox');"
+                "return {vb0:vb0, vb1:vb1, vb2:vb2, vb3:vb3, pct:pct, tf:tf0, dragCls:dragCls,"
+                "afterUp:st.classList.contains('dragging')};})())"
+            )) or {}
+            z = out["zoom"]
+            check("滚轮/按钮缩放改的是 viewBox（不是 CSS transform）",
+                  z.get("vb0") != z.get("vb1") and not z.get("tf"),
+                  f"{z.get('vb0')} → {z.get('vb1')} tf={z.get('tf')!r}")
+            check("缩放百分比跟着变", int((z.get("pct") or "0%").rstrip("%")) > 100, f"pct={z.get('pct')}")
+            check("拖拽改变平移（viewBox 原点）", z.get("vb2") != z.get("vb1"),
+                  f"{z.get('vb1')} → {z.get('vb2')}")
+            check("松开鼠标后退出拖拽态", not z.get("afterUp"), str(z.get("dragCls")))
+            check("「适应」把图复位到整图", z.get("vb3") == z.get("vb0"),
+                  f"{z.get('vb3')} vs {z.get('vb0')}")
+
+            # ---- 放大 2.2 倍 → 自动换高清层 ----
+            for _ in range(4):
+                js("document.querySelector('#geo-zoom [data-gz=\"in\"]').click();")
+            time.sleep(3.4)
+            out["hd"] = loads(js(
+                "JSON.stringify({meta:(document.getElementById('geo-meta')||{}).textContent||'',"
+                "svgs:document.querySelectorAll('#geo-stage svg').length})"
+            )) or {}
+            check("放大 2 倍以上自动换高清层", "高清" in (out["hd"].get("meta") or ""),
+                  str(out["hd"]))
+            js("document.querySelector('#geo-zoom [data-gz=\"fit\"]').click();")
 
             # 放大态截图（给文档用）
-            js("(function(){var c=document.querySelector('#mu-body .mu-chip:not(.nocoord)');"
+            js("(function(){var c=document.querySelector('#mu-body .mu-chip[data-focus]');"
                "if(c) c.click();})()")
             time.sleep(0.7)
             grab(os.path.join(SHOTS, "map_zoom.bmp"))
-            js("document.querySelector('#map-zoom [data-zoom=\"reset\"]').click();")
-            time.sleep(0.3)
-
-            time.sleep(0.6)
-            grab(os.path.join(SHOTS, "map_vector.bmp"))
+            js("var b=document.getElementById('rm-close'); if(b) b.click();")
+            js("document.querySelector('#geo-zoom [data-gz=\"fit\"]').click();")
+            time.sleep(0.4)
+            grab(os.path.join(SHOTS, "map_geo.bmp"))
 
             # 亮色主题下的同一张图（直接改属性，避免动到用户 config）
             js("document.documentElement.setAttribute('data-theme','light');")
             time.sleep(0.7)
-            grab(os.path.join(SHOTS, "map_vector_light.bmp"))
+            grab(os.path.join(SHOTS, "map_geo_light.bmp"))
             js("document.documentElement.setAttribute('data-theme','dark');")
 
-            # 竖长条区域（CC 宽高比 0.4）：等比铺满会缩成一条缝，默认要放大到看得清
+            # ---- 工具栏「区域拓扑」仍然可用，且能回得来 ----
+            js("document.getElementById('map-graph').click();")
+            time.sleep(1.8)
+            check("「区域拓扑」能从地图页打开关系图",
+                  bool(js("!!document.getElementById('gx-stage')")))
+            js("var b=document.getElementById('gx-back'); if(b) b.click();")
+            time.sleep(3.2)
+            check("关系图「← 地图」回到的是几何图（不是方块图）",
+                  bool(js("!!document.getElementById('geo-stage') && "
+                          "!!document.querySelector('#geo-stage svg.geo-svg')")))
             js("var b=document.getElementById('modal-close'); if(b) b.click();")
             time.sleep(0.5)
+
+            # ---- 窄长条区域（CC 宽高比 0.4）：几何图照样铺满舞台 ----
             js("var b=document.querySelector('[data-map=\"CC\"]'); if(b) b.click();")
-            time.sleep(1.0)
-            out["portrait"] = loads(js(
-                "JSON.stringify((function(){var s=document.getElementById('map-svg');"
-                "if(!s) return {open:false};"
-                "return {open:true, pct:document.getElementById('map-zoom-pct').textContent,"
-                "tf:s.style.transform||'', sheet:document.querySelectorAll('#map-sheet').length,"
-                "async:document.getElementById('modal-sub').textContent};})())"
-            ))
-            pt = out["portrait"] or {}
-            check("窄长区域默认放大到看得清", pt.get("open") and int((pt.get("pct") or "0%").rstrip("%")) > 100,
-                  f"pct={pt.get('pct')} tb={pt.get('async')}")
-            check("地图有「图纸」底板", pt.get("sheet") == 1, f"sheet={pt.get('sheet')}")
+            time.sleep(4.2)
+            out["narrow"] = loads(js(
+                "JSON.stringify((function(){var st=document.getElementById('geo-stage');"
+                "var svg=st&&st.querySelector('svg');"
+                "if(!svg) return {open:false};"
+                "var b=st.getBoundingClientRect();"
+                "return {open:true, rooms:st.querySelectorAll('.rm[data-room]').length,"
+                "pct:(document.getElementById('geo-pct')||{}).textContent||'',"
+                "fillsH:Math.abs(svg.getBoundingClientRect().height-b.height)<4,"
+                "sub:(document.getElementById('modal-sub')||{}).textContent};})())"
+            )) or {}
+            nr = out["narrow"]
+            check("窄长区域也能画出房间", nr.get("open") and (nr.get("rooms") or 0) > 0, str(nr)[:140])
+            check("几何图撑满舞台高度", nr.get("fillsH"), f"pct={nr.get('pct')}")
 
             out["final"] = loads(js(
                 "JSON.stringify({modalStillOpen:!document.getElementById('modal').hidden,"

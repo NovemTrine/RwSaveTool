@@ -13,7 +13,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections import deque
+from collections import deque, OrderedDict
 
 from . import (
     __release_date__,
@@ -30,6 +30,9 @@ from . import (
     sources,
     translations,
 )
+from .regmap import adapter as regmap_adapter
+from .regmap import svg as regmap_svg
+from .regmap import thumbnail as regmap_thumb
 
 try:  # webview 只在桌面壳里存在
     import webview
@@ -42,6 +45,76 @@ except Exception:  # pragma: no cover
 # 所以串成一条门闩，并且「后来者优先」——在门口排队时发现已经有更新的请求，
 # 就直接作废自己，把 CPU 让出去。
 _render_gate = threading.Lock()
+
+# ---- 区域地图布局（regmap）-----------------------------------------------
+# 布局也是 CPU 密集的（中位 0.7 s、最慢 4 s）。pywebview 每个 JS 调用一个线程，
+# 用户连点几个区域就会几个布局同时跑；这里同样串成一条门闩，并按
+# (区域, 战役, 参数摘要) 做内存缓存——同参数再打开应当 < 50 ms。
+_regmap_gate = threading.Lock()
+_regmap_cache: "OrderedDict[str, dict]" = OrderedDict()
+_REGMA_CACHE_MAX = 6
+
+# SVG 是字符串，单区 0.4–1.5 MB；只留最近 3 个，命中时省下 1 s 的拼串
+_regmap_svg_cache: "OrderedDict[str, dict]" = OrderedDict()
+_REGMA_SVG_MAX = 4
+
+# 高清层要重新按密度铺缩略图，而缩略图要靠 `nodes[].room`（房间格数据）。
+# `regmap_map` 的返回值为了省内存会把 room 摘掉，所以这里另存**一份带 room 的**
+# 原始布局，只留最近 1 个区：换来"放大后按需换高清"，代价是最多一个区的房间格常驻。
+_regmap_raw: "OrderedDict[str, dict]" = OrderedDict()
+_REGMA_RAW_MAX = 1
+
+# SVG 缓存 key 里带一个**渲染版本号**：改了画法（哪怕 key 的其他参数一个没动）就 +1，
+# 否则同一次会话里切回来还是旧图——内存缓存不落盘，但进程是长活的，用户会以为没生效。
+# 2 = V1.17（高清层：杆/管的假竖刺折回源格）；3 = V1.18（№2 删标注：图标/物件/业力门下线）。
+_REGMA_RENDER_V = 3
+
+
+def _room_colors(code: str, geo: dict, region: dict | None) -> dict | None:
+    """这间房该用的「可通行 / 背景结构」色；按子区域分组取，取不到返回 `None`。
+
+    `_colors.json` 是 `core/regmap/colors.py` 的缓存（区域地图算一次就落盘）。
+    """
+    from .regmap import colors as _colors
+    rc = (_colors.load_cache() or {}).get(str(code or "").upper())
+    if not rc:
+        return None
+    groups = {str(g.get("sub") or ""): g for g in (rc.get("groups") or [])}
+    if not groups:
+        return None
+    want = ""
+    target = str(geo.get("name") or geo.get("room") or "").upper()
+    for layer in (region or {}).get("layers") or []:
+        for r in layer.get("rooms") or []:
+            if str(r.get("name") or "").upper() == target:
+                sub = str(r.get("subregion") or "").strip()
+                if sub and sub in groups:
+                    want = sub
+                break
+    g = groups.get(want) or groups.get("")
+    if not g:
+        return None
+    return {"air": g.get("air"), "struct": g.get("struct"), "sub": want}
+
+
+def _regmap_key(code: str, slugcat: str, opts: dict | None) -> str:
+    # `_REGMA_RENDER_V` 也进 key：页面 F5 重载时 Python 进程还活着，内存缓存不会清，
+    # 不带版本号就会出现"改了画法、页面上还是旧图"。
+    return json.dumps({"c": str(code).upper(), "s": str(slugcat or "").upper(),
+                       "o": opts or {}, "v": _REGMA_RENDER_V},
+                      sort_keys=True, default=str)
+
+
+def _regmap_public(result: dict) -> dict:
+    """给前端的瘦身版：`nodes[]` 去掉 `room`（Python 对象，不可序列化且占内存）。
+
+    注意**不能原地 pop**：`_regmap_raw` 还指着同一批节点，摘掉就再也做不了高清层了。
+    这里复制一层浅字典，runs / over / path 这些照样共用（只读）。
+    """
+    out = dict(result)
+    out["nodes"] = [{k: v for k, v in n.items() if k != "room"}
+                    for n in result.get("nodes") or []]
+    return out
 
 # ---- 预取队列（M3）-------------------------------------------------------
 # 用户点开一间房后，他最可能点的下一间就是右栏那几个出口。与其等他点，
@@ -414,6 +487,152 @@ class Api:
             return {"ok": False, "error": "该区域没有导入数据"}
         return {"ok": True, "region": region}
 
+    # ------------------------------------------------------------------
+    # 区域地图（几何布局）
+    # ------------------------------------------------------------------
+    def regmap_probe(self, code: str, slugcat: str = "") -> dict:
+        """这个区域能不能排布：房间数、缺地形数、无地图矩形数、可用战役。
+
+        只读 `region_data`，不写任何东西；界面用它决定「直接画」还是「给提示」。
+        """
+        return regmap_adapter.probe(code, slugcat or "")
+
+    def regmap_map(self, code: str, slugcat: str = "", opts: dict | None = None) -> dict:
+        """算一张区域地图的几何布局，返回纯数据（节点 / 连线 / 统计）。
+
+        缓存键 = (区域, 战役, 参数)。命中时 `cached=True` 且通常 < 50 ms；
+        未命中时串行计算（`_regmap_gate`），最慢的区域约 4 s。
+        """
+        key = _regmap_key(code, slugcat, opts)
+        hit = _regmap_cache.get(key)
+        if hit is not None:
+            _regmap_cache.move_to_end(key)
+            return dict(hit, cached=True, ms=0)
+
+        with _regmap_gate:
+            hit = _regmap_cache.get(key)          # 等锁期间可能已经有人算完
+            if hit is not None:
+                _regmap_cache.move_to_end(key)
+                return dict(hit, cached=True, ms=0)
+            t0 = time.time()
+            try:
+                result = regmap_adapter.build(code, slugcat or "", opts or {})
+            except FileNotFoundError as exc:
+                return {"ok": False, "error": "no_region", "detail": str(exc)}
+            except ValueError as exc:
+                return {"ok": False, "error": "bad_rooms", "detail": str(exc)}
+            except Exception as exc:               # noqa: BLE001 - 桥接层不抛
+                return {"ok": False, "error": "layout_failed", "detail": str(exc)}
+            ms = int((time.time() - t0) * 1000)
+            _regmap_raw[key] = result             # 带 room 的原件，留给高清层
+            _regmap_raw.move_to_end(key)
+            while len(_regmap_raw) > _REGMA_RAW_MAX:
+                _regmap_raw.popitem(last=False)
+            payload = _regmap_public(result)
+            payload["ok"] = True
+            payload["cached"] = False
+            payload["ms"] = ms
+            _regmap_cache[key] = payload
+            while len(_regmap_cache) > _REGMA_CACHE_MAX:
+                _regmap_cache.popitem(last=False)
+            return dict(payload)
+
+    def regmap_svg(self, code: str, slugcat: str = "", opts: dict | None = None,
+                   width: int = 2400, labels: bool = False, density: int = 2,
+                   curve: dict | None = None, link_inner: float | None = None,
+                   link_width: float | None = None, bar_scale: float | None = None,
+                   anno: dict | None = None) -> dict:
+        """区域布局的**自包含 SVG**：地图页直接塞进 DOM，导出也是它。
+
+        为什么不在前端画：画一遍、导出再画一遍，两套代码必然走形；这里出一次，
+        页面看到的就是导出到文件的。`width=0` 表示用默认 2400。
+
+        `density` 是缩略密度：2 = 默认（0.4–1.4 MB，远看够用）；4 = 高清层
+        （放大后前端按需再要一次，体积约 2–3 倍，坐标空间与默认层**完全相同**，
+        所以前端只要换 <svg> 元素、viewBox 不用动）。
+
+        S4 的调参走 `curve`（mode/k/min/max）、`link_inner`、`link_width`、`bar_scale`；
+        它们都要进缓存 key，否则拖完滑杆会拿到上一次的图。
+
+        `anno`（W4 / №2）是标注开关（**只剩** `sub` 子区域色、`labels` 子区域名），
+        同样进缓存 key——`True` = 全开，`None`/`False` = 全关。旧调用方传
+        `kind/marks/gates` 不会报错，但那三类已经删了。
+
+        高清层要拿带 `room` 的原始布局重新铺缩略图，所以先查 `_regmap_raw`；
+        没命中才自己算一遍（慢，但只在天关掉页面又回来时发生）。
+        """
+        width = int(width or 2400)
+        density = max(1, min(6, int(density or 2)))
+        cv = curve if isinstance(curve, dict) else {}
+        av = None
+        if isinstance(anno, dict):
+            av = "".join("%s=%d" % (k, int(bool(anno.get(k, 1)))) for k in sorted(anno))
+        elif anno:
+            av = "all"
+        extra = "|%s/%.2f/%.2f/%.2f|%.2f|%s|%.3f|%s|r%d" % (
+            (cv.get("mode") or "normal"),
+            float(cv.get("k", 0.42)), float(cv.get("min", 1.5)), float(cv.get("max", 0) or 0),
+            0.5 if link_inner is None else float(link_inner),
+            "auto" if link_width is None else "%.2f" % float(link_width),
+            1.0 if bar_scale is None else float(bar_scale),
+            av or "-", _REGMA_RENDER_V)
+        key = "%s|%d|%d|%d%s" % (_regmap_key(code, slugcat, opts), width,
+                                 1 if labels else 0, density, extra)
+        hit = _regmap_svg_cache.get(key)
+        if hit is not None:
+            _regmap_svg_cache.move_to_end(key)
+            return dict(hit, cached=True)
+
+        mapkey = _regmap_key(code, slugcat, opts)
+        raw = _regmap_raw.get(mapkey)
+        if raw is None:
+            # 先让它把布局算出来（顺带把带 room 的原件放进 `_regmap_raw`）；
+            # 注意命中 map 缓存时 raw 可能已经过期清掉了，那就只能用公开版（密度 2）。
+            res = self.regmap_map(code, slugcat, opts)
+            if not res.get("ok"):
+                return res
+            raw = _regmap_raw.get(mapkey)
+        else:
+            res = None
+
+        layout = None
+        if density != 2 and raw is not None:
+            nodes = [dict(n) for n in raw["nodes"]]      # 浅拷贝：prepare 会改 runs/over
+            try:
+                regmap_thumb.prepare(nodes, density=density)
+            except Exception:                            # noqa: BLE001 - 退回默认层
+                nodes = None
+            if nodes is not None:
+                # `colors` 必须一起带过来：不带的话高清层会落回 `PALETTE` 的兜底色
+                # （可通行变成 #8C97AF 那片灰蓝，而不是区域调色板提取色）——
+                # №4 的"子区域色当可通行底色"就只在默认层生效了，放大一看是另一套颜色。
+                layout = {"nodes": nodes, "edges": raw["edges"], "stats": raw["stats"],
+                          "colors": raw.get("colors")}
+
+        if layout is None:
+            if res is None:
+                res = self.regmap_map(code, slugcat, opts)
+                if not res.get("ok"):
+                    return res
+            layout = res
+
+        try:
+            r = regmap_svg.build_svg(
+                layout, width=width, labels=bool(labels), curve=cv,
+                link_inner=link_inner, link_width=link_width,
+                bar_scale=1.0 if bar_scale is None else float(bar_scale),
+                anno=anno if isinstance(anno, dict) else (True if anno else False))
+        except Exception as exc:                   # noqa: BLE001 - 桥接层不抛
+            return {"ok": False, "error": "svg_failed", "detail": str(exc)}
+        payload = {"ok": True, "svg": r["svg"], "w": r["w"], "h": r["h"],
+                   "bytes": r["bytes"], "rooms": r["rooms"], "links": r["links"],
+                   "annos": r.get("annos", 0),
+                   "density": density, "cached": False, "ms": 0}
+        _regmap_svg_cache[key] = payload
+        while len(_regmap_svg_cache) > _REGMA_SVG_MAX:
+            _regmap_svg_cache.popitem(last=False)
+        return dict(payload)
+
     def delete_region(self, code: str) -> dict:
         return region_store.delete_region(code)
 
@@ -482,7 +701,23 @@ class Api:
         if not region:
             return {"ok": False, "error": "no_region", "room": room}
         try:
-            return room_geo.geometry(region, room, layer_id)
+            geo = room_geo.geometry(region, room, layer_id)
+            if geo.get("ok"):
+                # 特效层（W4-fx）：房间卡与区域地图共用同一份遮罩，别各算一遍。
+                try:
+                    from .regmap import fx as _regmap_fx
+                    geo["fx"] = _regmap_fx.room_fx_geom(geo.get("path") or "",
+                                                        geo.get("w"), geo.get("h"))
+                except Exception:                  # noqa: BLE001 - 特效坏了不该影响地形
+                    geo["fx"] = None
+                # 配色（V1.15 №4/№5）：房间卡与区域地图共用同一份提取色。
+                # 只读 `region_data/_colors.json`（地图页算过一次就有），**不**在这里
+                # 调 `adapter.load_rooms`——那要 0.4–0.6 s，开卡会明显卡顿。
+                try:
+                    geo["colors"] = _room_colors(code, geo, region)
+                except Exception:              # noqa: BLE001 - 配色坏了就用兜底
+                    geo["colors"] = None
+            return geo
         except room_geo.RoomGeoError as exc:
             return {"ok": False, "error": "unparsable", "detail": str(exc), "room": room}
         except Exception as exc:  # noqa: BLE001 - 桥接层不向外抛，界面显示错误即可
@@ -629,6 +864,120 @@ class Api:
                 subprocess.Popen(["xdg-open", target])  # noqa: S603
             return {"ok": True, "path": target}
         except Exception as exc:
+            return {"ok": False, "error": str(exc), "path": target}
+
+    # ------------------------------------------------------------------
+    # W5b 导出：由后端写文件
+    # ------------------------------------------------------------------
+    def _export_start_dir(self) -> str:
+        """另存为的起始目录：上次选过的 → 系统下载夹 → 桌面 → 家目录。
+
+        页面自己 `<a download>` 时文件落进 WebView2 自己的下载目录，页面既拿不到路径、
+        也没法提示，用户点完只能去翻「下载」文件夹（主人 2026-11-22 报的就是这个）。
+        """
+        cfg = paths.load_config()
+        last = str(((cfg.get("ui") or {}).get("exportDir")) or "").strip()
+        if last and os.path.isdir(last):
+            return last
+        home = os.path.expanduser("~")
+        for name in ("Downloads", "下载", "Desktop", "桌面"):
+            cand = os.path.join(home, name)
+            if os.path.isdir(cand):
+                return cand
+        return home
+
+    def export_save(self, name: str, data: str, kind: str = "svg",
+                    target: str | None = None) -> dict:
+        """导出内容 → 系统「另存为」→ 写盘，返回真实路径供界面提示。
+
+        参数：
+            name 建议文件名（可以带路径，取 basename；非法字符会被剔掉）
+            data `svg` 传文本；`png` 传 `data:image/png;base64,…` 或裸 base64
+            kind "svg" / "png"，决定扩展名与文件类型过滤
+            target 指定落盘路径时**不弹对话框**（回归与将来的批量导出用；页面不传）
+
+        返回值：`{ok, path, dir, name, bytes}`；用户取消是 `{ok: False, canceled: True}`
+        （前端据此不提示失败）。
+        """
+        ext = ".png" if str(kind or "").lower() == "png" else ".svg"
+        raw = str(name or "").replace("\\", "/")
+        base = os.path.basename(raw) or ("export" + ext)
+        base = "".join(ch for ch in base if ch not in '<>:"/\\|?*').strip() or ("export" + ext)
+        if not os.path.splitext(base)[1]:
+            base += ext
+
+        if target:
+            picked = [str(target)]
+        else:
+            if not self._window or webview is None:
+                return {"ok": False, "error": "文件对话框不可用，无法选择保存位置"}
+            dialog = getattr(webview, "FileDialog", None)
+            dlg_id = getattr(dialog, "SAVE", None) if dialog is not None else None
+            if dlg_id is None:  # 老版本 pywebview
+                dlg_id = getattr(webview, "SAVE_DIALOG", 30)
+            types = ("PNG 图片 (*.png)",) if ext == ".png" else ("SVG 矢量图 (*.svg)",)
+            try:
+                picked = self._window.create_file_dialog(
+                    dlg_id, directory=self._export_start_dir(),
+                    save_filename=base, file_types=types,
+                )
+            except Exception as exc:  # noqa: BLE001
+                return {"ok": False, "error": str(exc)}
+            if not picked:
+                return {"ok": False, "canceled": True}
+        target = picked[0] if isinstance(picked, (list, tuple)) else str(picked)
+        target = str(target or "").strip()
+        if not target:
+            return {"ok": False, "canceled": True}
+        if not os.path.splitext(target)[1]:
+            target += ext
+
+        try:
+            if ext == ".png":
+                payload = str(data or "")
+                if payload.startswith("data:"):
+                    payload = payload.split(",", 1)[1]
+                blob = base64.b64decode(payload)
+            else:
+                blob = str(data or "").encode("utf-8")
+            with open(target, "wb") as fh:
+                fh.write(blob)
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": "写入失败：%s" % exc, "path": target}
+
+        if not target:      # 只有用户亲手选的目录才值得记住；回归指定的临时路径不写配置
+            try:
+                cfg = paths.load_config()
+                ui = cfg.setdefault("ui", {})
+                ui["exportDir"] = os.path.dirname(target)
+                paths.save_config(cfg)
+            except Exception:  # noqa: BLE001
+                pass  # 记不住目录不影响这一次导出
+
+        return {
+            "ok": True,
+            "path": target,
+            "dir": os.path.dirname(target),
+            "name": os.path.basename(target),
+            "bytes": len(blob),
+        }
+
+    def open_export_path(self, path: str) -> dict:
+        """在文件管理器里定位刚导出的文件（Windows 是选中它，不是只打开目录）。"""
+        target = str(path or "").strip()
+        if not target or not os.path.exists(target):
+            return {"ok": False, "error": "文件不存在（是不是被移动或删掉了）"}
+        try:
+            if sys.platform.startswith("win"):
+                subprocess.Popen(  # noqa: S603
+                    ["explorer", "/select," + os.path.normpath(target)]
+                )
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-R", target])  # noqa: S603
+            else:
+                subprocess.Popen(["xdg-open", os.path.dirname(target)])  # noqa: S603
+            return {"ok": True, "path": target}
+        except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc), "path": target}
 
     def builtin_regions(self) -> dict:

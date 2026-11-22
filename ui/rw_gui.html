@@ -442,6 +442,21 @@
   }
   #toast.on{opacity:1;transform:translate(-50%,0)}
 
+  /* 导出结果卡（W5b）：右下角浮出，写明**文件存到哪了**，并给「打开所在文件夹」。
+     toast 只 2.2 秒、单行截断，路径长一点就看不全，所以另起一张卡。 */
+  #export-tip{position:fixed;right:22px;bottom:22px;z-index:1001;width:min(440px,calc(100vw - 44px));
+    background:#141922;border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow);
+    padding:12px 14px;font-size:12.5px;color:#e6ecf5;display:none}
+  #export-tip.on{display:block}
+  #export-tip .et-head{font-weight:600;margin-bottom:2px}
+  #export-tip .et-sub{color:#8d98a8;font-size:11.5px}
+  #export-tip .et-path{margin:8px 0 10px;padding:7px 9px;border-radius:8px;
+    border:1px solid var(--line);background:rgba(255,255,255,.05);
+    color:#b9c4d4;font-size:11.5px;line-height:1.5;word-break:break-all;
+    max-height:5.6em;overflow:auto;user-select:text}
+  #export-tip .et-row{display:flex;gap:8px;justify-content:flex-end}
+  #export-tip .et-row .btn{font-size:11.5px;padding:5px 11px}
+
   .empty{color:var(--dim);font-size:12.5px;padding:8px 0}
 
   /* ---------- 桌面版：工具栏 / 模态框 / 区域完成度 ---------- */
@@ -471,7 +486,7 @@
   .modal-card.full .modal-body{display:flex;flex-direction:column;overflow:hidden;
     padding:12px 16px 14px;flex:1 1 auto;min-height:0}
   .modal-card.full .gx-stage{flex:1 1 auto;height:auto;min-height:0}
-  .modal-card.full .map-stage{flex:1 1 auto;height:auto;min-height:0}
+  .modal-card.full .geo-stage{flex:1 1 auto;height:auto;min-height:0}
   /* 全屏时收紧头部内边距。但房间卡（.room-head）右侧要留 58px 给绝对定位的关闭键——
      这条规则的特异性 (0,3,0) 会盖掉 .room-head 的 padding-right:58px (0,1,0)，
      结果全屏后 × 正好落在按钮组尾部按钮的矩形里，被压得看不见。所以排除它。 */
@@ -557,17 +572,17 @@
 
   .room-modal{z-index:70}
   /* 房间卡配色：默认值完全照编辑器几何视图的灰阶——
-       实心＝背景色 #2F2F2F（房间外也是这个色）、可攀爬墙 #3C3C3C、空气 #535353、管道 #777777。
-     这三档灰度的关系是「空气最亮、可攀爬墙居中、实心最暗」，靠负空间看出房间形状。
+       V1.15 起与几何图共用一套色卡：岩壁纯黑、背景结构 #637178、可通行由区域调色板提取。
+     层次关系仍是「可通行最亮、背景结构居中、岩壁最暗」，靠负空间看出房间形状。
      用户可以在房间卡里的「配色」里改成自己的色板，按亮/暗主题分别保存。 */
   :root{
-    --rm-air:#535353;--rm-solid:#2f2f2f;--rm-slope:#2f2f2f;--rm-grid:rgba(255,255,255,.06);
-    --rm-beam:#f2c66d;--rm-climb:#3c3c3c;--rm-pipe:#777777;
-    --rm-exit:#2fed2f;--rm-den:#ed2f2f;--rm-creature:#2f2fed}
+    --rm-air:#8C97AF;--rm-solid:#000000;--rm-slope:#2F2F2F;--rm-grid:rgba(255,255,255,.06);
+    --rm-beam:#374D5D;--rm-climb:#637178;--rm-pipe:#FFFFFF;
+    --rm-exit:#2FED2F;--rm-den:#ED2F2F;--rm-creature:#2F2FED}
   html[data-theme="light"]{
-    --rm-air:#ffffff;--rm-solid:#c3c3c3;--rm-slope:#c3c3c3;--rm-grid:rgba(0,0,0,.08);
-    --rm-beam:#b4761a;--rm-climb:#e2e2e2;--rm-pipe:#6a6a6a;
-    --rm-exit:#12a012;--rm-den:#b01818;--rm-creature:#2020c0}
+    --rm-air:#8C97AF;--rm-solid:#000000;--rm-slope:#2F2F2F;--rm-grid:rgba(0,0,0,.08);
+    --rm-beam:#374D5D;--rm-climb:#637178;--rm-pipe:#FFFFFF;
+    --rm-exit:#2FED2F;--rm-den:#ED2F2F;--rm-creature:#2F2FED}
   .room-card{width:min(1040px,96vw)}
   /* 全屏（B5）：尺寸复用关系图那套，但房间卡自己的 body 改成横向两栏——
      左边画布吃满剩余高度，右边固定 258px 放出口清单。紧凑模式（默认）
@@ -825,7 +840,9 @@
   .numsub{font-size:10.5px;color:var(--dim);margin-left:3px;
     max-width:220px;overflow-wrap:anywhere;word-break:break-word}
 
-  /* ---------------- 区域地图（矢量，无底图） ---------------- */
+  /* ---------------- 区域地图（几何图 + 房间清单） ----------------
+     V1.20 起方块图下线，这里只剩外壳：工具条 / 舞台 / 右侧清单。
+     舞台与图本身交给下面的 `.geo-stage` 一套。 */
   .map-wrap{display:flex;flex-direction:column;gap:10px;flex:1 1 auto;min-height:0}
   .map-main{display:flex;flex-direction:column;gap:10px;flex:1 1 auto;min-width:0;min-height:0}
   .map-side{display:flex;flex-direction:column;gap:8px}
@@ -833,10 +850,13 @@
   .modal-card.full .map-side{width:322px;flex:none;overflow:auto;border:1px solid var(--line);
     border-radius:12px;padding:10px 12px;background:var(--surface);gap:6px}
   /* 侧栏里的清单要自己占满剩余高度，别卡在 108px */
+  /* 清单外面套了一层 #map-list（内容要等几何图算完才能填），它必须把 flex 链传下去，
+     否则 `.map-unvisited` 的 flex:1 失效、整个侧栏变成一条长滚动条，底部说明被推走 */
+  .map-side #map-list{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
   .map-side .map-unvisited{display:flex;flex-direction:column;min-height:0;flex:1}
   .map-side .mu-head{flex-wrap:wrap;gap:6px}
   .map-side .mu-body{max-height:none;flex:1 1 auto;overflow:auto;align-content:flex-start}
-  .map-side .map-legend{flex-wrap:wrap;gap:5px 10px;font-size:11px}
+  .map-side .map-legend{flex-wrap:wrap;gap:5px 10px;font-size:11px;margin:0}
   .map-side .mu-hint{line-height:1.5}
   .map-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
   .map-tools .mlabel{font-size:11.5px;color:var(--dim);margin-right:2px}
@@ -851,27 +871,9 @@
     background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:8px}
   .map-graph-btn:hover{background:color-mix(in srgb,var(--accent) 22%,transparent);
     border-color:color-mix(in srgb,var(--accent) 65%,var(--line))}
-  .map-stage{position:relative;border:1px solid var(--line);border-radius:12px;padding:12px;
-    background:var(--surface-2);overflow:hidden;height:clamp(280px,60vh,640px);
-    --rm-fill:#1b2431;--rm-line:#435a75;--rm-gate:#27313f;--rm-link:#3d5670;--rm-sheet:#151d28}
-  html[data-theme="light"] .map-stage{--rm-fill:#e2e9f2;--rm-line:#5a6879;--rm-gate:#cdd8e5;
-    --rm-link:#93a3b6;--rm-sheet:#fbfcfe}
-  .map-stage svg{width:100%;height:100%;display:block;cursor:grab;transform-origin:0 0;
-    will-change:transform;touch-action:none}
-  /* 「图纸」底板：让窄长区域（CC/RM/SS 这类 0.26 宽高比）在宽舞台里看起来像一张图，
-     而不是漂在中间的一条细缝 */
-  .map-stage .map-sheet{fill:var(--rm-sheet);stroke:var(--rm-line);stroke-width:.8;
-    vector-effect:non-scaling-stroke;opacity:.9}
-  /* 底图层（P0）：游戏自带的 map_<reg>.png，1px=1tile，与房间方块同一坐标系。
-     只当背景参考——降饱和 + 压暗，免得和小方块抢视线；淡入避免"啪"地出现。
-     刻意不用 image-rendering:pixelated：放大时平滑模糊比硬块更像"底图"。 */
-  .map-stage .map-base{opacity:0;transition:opacity .24s ease;pointer-events:none;
-    filter:saturate(.55)}
-  .map-stage .map-base.on{opacity:.42}
-  html[data-theme="light"] .map-stage .map-base.on{opacity:.32}
-  .map-stage.zoomed svg{cursor:move}
-  .map-stage.dragging svg{cursor:grabbing}
-  .map-stage.dragging{user-select:none}
+  /* 清单里「图上没有这 N 间」那一栏的分隔 */
+  .mu-split{flex:0 0 100%;font-size:11px;color:var(--dim);margin:8px 0 0;
+    padding-top:7px;border-top:1px dashed var(--line)}
   /* 缩放控制条：右下角，不挡房间 */
   .map-zoom{position:absolute;right:10px;bottom:10px;z-index:6;display:flex;align-items:center;
     gap:2px;padding:3px;border-radius:9px;border:1px solid var(--line);
@@ -880,38 +882,86 @@
   .map-zoom button{font:inherit;font-size:12px;line-height:1;padding:5px 8px;border-radius:6px;
     border:none;background:transparent;color:var(--muted);cursor:pointer;transition:.12s}
   .map-zoom button:hover{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--text)}
-  .map-zoom #map-zoom-pct{min-width:42px;text-align:center;font-size:11px;color:var(--dim);
+  .map-zoom span{min-width:42px;text-align:center;font-size:11px;color:var(--dim);
     font-variant-numeric:tabular-nums}
   .map-hint{font-size:11px;color:var(--dim);margin-left:auto}
-  /* 地图层过滤：选了某一层就藏起别的层（含它们的连线） */
-  .map-stage[data-layer="0"] [data-l="1"], .map-stage[data-layer="0"] [data-l="2"],
-  .map-stage[data-layer="1"] [data-l="0"], .map-stage[data-layer="1"] [data-l="2"],
-  .map-stage[data-layer="2"] [data-l="0"], .map-stage[data-layer="2"] [data-l="1"]{display:none}
-  .map-stage .room{fill:var(--rm-fill);stroke:var(--rm-line);stroke-width:1.4;
-    transition:fill .12s,stroke .12s,opacity .14s}
-  /* 三个标签与地图联动：不在此列的方块压暗，仍可点、悬浮/定位时恢复 */
-  .map-stage[data-filter="unseen"] [data-seen="1"],
-  .map-stage[data-filter="seen"] [data-seen="0"]{opacity:.16;transition:opacity .14s}
-  .map-stage[data-filter="unseen"] [data-seen="1"]:hover,
-  .map-stage[data-filter="seen"] [data-seen="0"]:hover{opacity:.55}
-  .map-stage[data-filter="unseen"] [data-seen="1"].focus,
-  .map-stage[data-filter="seen"] [data-seen="0"].focus{opacity:1}
-  .map-stage[data-filter="unseen"] .link,
-  .map-stage[data-filter="seen"] .link{opacity:.14}
-  .map-stage .room.seen{fill:color-mix(in srgb,var(--accent) 58%,transparent);
-    stroke:color-mix(in srgb,var(--accent) 40%,#fff);stroke-width:1.6}
-  html[data-theme="light"] .map-stage .room.seen{stroke:color-mix(in srgb,var(--accent) 55%,#000)}
-  .map-stage .room.gate{fill:var(--rm-gate);stroke:var(--rm-line);stroke-dasharray:5 3}
-  .map-stage .shelter-mark{fill:var(--amber);stroke:rgba(0,0,0,.45);stroke-width:.6}
-  .map-stage .cross-mark{fill:var(--rm-link);stroke:none;opacity:.85}
-  .map-stage .room.focus{stroke:#fff;stroke-width:2.6;
-    filter:drop-shadow(0 0 7px color-mix(in srgb,var(--accent) 85%,transparent))}
-  .map-stage .room:hover{stroke:color-mix(in srgb,var(--accent) 75%,#fff);stroke-width:2.2}
-  .map-stage .link{stroke:var(--rm-link);stroke-width:1.4;opacity:.55}
-  .map-stage .pearl{fill:#f0e2b6;stroke:rgba(30,24,12,.7);stroke-width:.9}
-  .map-stage .doorlabel{fill:var(--muted);font-size:10px;letter-spacing:.3px;pointer-events:none}
-  .map-stage .focus-ring{fill:none;stroke:#fff;stroke-width:2;opacity:0}
-  .map-stage .focus-ring.on{animation:pulse 1.4s ease-out 2}
+  /* ---- 几何图（W1-f）----
+     SVG 由后端 `regmap_svg` 拼好，前端只管缩放/平移与图例。
+     底色固定深色（地图本身是"发光青"，跟随主题反而更糊），两边都当图画看。 */
+  .geo-stage{position:relative;flex:1 1 auto;min-height:0;border:1px solid var(--line);
+    border-radius:12px;overflow:hidden;background:#05070a;cursor:grab}
+  .geo-stage.dragging{cursor:grabbing;user-select:none}
+  .geo-stage svg.geo-svg{display:block;width:100%;height:100%;transform-origin:0 0;
+    will-change:transform}
+  /* 2026-11-21（S3）：探索状态改用「有没有高亮框」判断——`.rm.seen .fr` 显形。
+     未探索房间**不再压暗**（0.4 那档在放大后根本看不出来，主人明确不要）；
+     `dim` 类仍保留，将来要压暗只需把这条换成 `opacity:var(--rg-dim,.4)`。 */
+  .geo-stage .rm.dim{opacity:1}
+  /* 右侧清单切到某个标签时，不在这个标签里的房间压暗（明确的操作反馈，仍可点） */
+  .geo-stage[data-filter="unseen"] .rm.seen,
+  .geo-stage[data-filter="seen"] .rm.dim{opacity:.2;transition:opacity .14s}
+  /* 点房间号定位：白色描边压在房间里那层透明 hit 上，比给整间房换色更不打扰 */
+  .geo-stage .rm.focus{opacity:1}
+  .geo-stage .rm.focus .hit{stroke:#fff;stroke-width:2.4;stroke-opacity:.95}
+  .geo-stage .rm:hover .hit{stroke:#9fe8ef;stroke-width:1.2;stroke-opacity:.5}
+  .geo-hold{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    text-align:center;padding:0 18px;color:#7d8f99;font-size:12.5px;letter-spacing:.03em}
+  .geo-hold.err{color:#e08a8a}
+  .geo-legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11.5px;color:var(--muted)}
+  .geo-legend i{display:inline-block;width:11px;height:11px;border-radius:3px;
+    margin-right:5px;vertical-align:-1px}
+  .geo-note{font-size:11.5px;line-height:1.7;color:var(--dim)}
+  .geo-note b{color:var(--text);font-weight:600}
+  /* 说明折叠：收起时只占一行，右侧栏的高度全部让给房间清单 */
+  .geo-note-box{font-size:11.5px;color:var(--dim);border-top:1px solid var(--line);padding-top:7px}
+  .geo-note-box>summary{cursor:pointer;color:var(--muted);list-style:none;user-select:none}
+  .geo-note-box>summary::-webkit-details-marker{display:none}
+  .geo-note-box>summary::before{content:'▸ ';color:var(--dim)}
+  .geo-note-box[open]>summary::before{content:'▾ '}
+  .geo-note-box>summary:hover{color:var(--text)}
+  .geo-note-box .geo-note{margin-top:6px}
+  /* 本区配色：舞台左上角浮层，由工具栏「配色」按钮开合（不开窗，改色时还能看见地图） */
+  .geo-pal-pop{position:absolute;left:10px;top:10px;z-index:8;width:216px;
+    max-height:calc(100% - 20px);overflow:auto;padding:9px 10px;border-radius:10px;
+    border:1px solid var(--line);background:var(--panel);
+    box-shadow:0 14px 34px rgba(0,0,0,.55)}
+  .geo-pal-pop[hidden]{display:none}
+  .geo-pal-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;
+    font-size:12px;color:var(--muted)}
+  .geo-pal-head{flex-wrap:wrap}
+  .geo-pal-head .btn{font-size:10.5px;padding:2px 7px}
+  .geo-pal-head .btn:first-of-type{margin-left:auto}
+  /* 17 项之后单列会把浮层撑到 660px（舞台 682，只能滚）。
+     W4-fx 加进来时改成两列：色块 26×19、字 11px，正好装得下、不用滚。 */
+  .geo-pal-pop .rp-grid{grid-template-columns:1fr 1fr;gap:4px 8px}
+  .geo-pal-pop .rp-item{font-size:11px;gap:5px}
+  .geo-pal-pop .rp-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .geo-pal-pop .rp-item input[type=color]{width:26px;height:19px;flex:none}
+  .geo-pal-pop .rp-item .rp-hex{display:none}
+  .geo-pal-note{margin-top:7px;font-size:11px;line-height:1.5;color:var(--dim)}
+  /* S4：连线 / 杆子参数（配色浮层下半段） */
+  .geo-curve{margin-top:8px;padding-top:7px;border-top:1px solid var(--line)}
+  .geo-curve .gc-head{display:flex;align-items:center;justify-content:space-between;
+    font-size:11px;color:var(--dim);margin-bottom:2px}
+  .geo-curve .gc-head .btn{font-size:10.5px;padding:2px 7px}
+  .geo-curve .gc-row{display:flex;align-items:center;gap:6px;margin:3px 0;
+    font-size:11.5px;color:var(--dim);cursor:default}
+  .geo-curve .gc-row>span:first-child{width:32px;flex:none}
+  .geo-curve .gc-row input[type=range]{flex:1;min-width:0;height:15px;margin:0;
+    accent-color:var(--accent)}
+  .geo-curve .gc-v{width:30px;flex:none;text-align:right;font-style:normal;
+    font-variant-numeric:tabular-nums;color:var(--text)}
+  .geo-curve select{flex:1;min-width:0;height:20px;font-size:11px;background:var(--surface,#0b0f15);
+    color:var(--text);border:1px solid var(--line);border-radius:5px}
+  /* W4：标注开关（浮层第三段） */
+  .geo-anno{margin-top:8px;padding-top:7px;border-top:1px solid var(--line)}
+  .geo-anno .ga-head{display:flex;align-items:center;justify-content:space-between;
+    font-size:11px;color:var(--dim);margin-bottom:3px}
+  .geo-anno .ga-head .btn{font-size:10.5px;padding:2px 7px}
+  .geo-anno .ga-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}
+  .geo-anno label{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--dim);
+    cursor:pointer}
+  .geo-anno input[type=checkbox]{width:12px;height:12px;margin:0;accent-color:var(--accent)}
   @keyframes pulse{
     0%{opacity:.9;transform:scale(1)}
     100%{opacity:0;transform:scale(1.9)}
@@ -1131,6 +1181,7 @@
 
 <div id="tip" role="tooltip"></div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="export-tip" role="status" aria-live="polite"></div>
 
 <!-- 外观与配色（常驻，未打开存档时也能用） -->
 <button id="theme-fab" class="fab" type="button" aria-label="外观与配色" data-tip="外观与配色">
@@ -1234,6 +1285,7 @@
     </div>
   </div>
 </div>
+
 
 <!-- ===================== 解析器源码（供 Worker 与主线程兜底共用） ===================== -->
 <script id="creature-score" type="application/json">
@@ -2565,6 +2617,10 @@ function parseSave(raw, onProgress){
   state.graphOpts = {};        /* 关系图参数（力/显示/动画），缺省回落 GX_OPT_DEFAULT */
   state.graphColors = { dark:{}, light:{} };  /* 关系图状态配色，只存改过的项 */
   state.roomMarks = {};        /* 手动探索标记：{区域:{房间:1|-1}}，缺省跟随存档 */
+  state.regmapColors = {};     /* 几何图配色：{区域:{air/solid/…: '#hex'}}，只存改过的项 */
+  state.regmapCurve = null;    /* 连线参数（S4）：null = 用 CURVE_DEF；全局一套，不分区域 */
+  state.regmapEngine = '';     /* 排布引擎（W2）：'' = 跟随后端默认，'legacy' / 'zq' 手动 */
+  state.regmapAnno = null;     /* 标注开关（W4）：null = 用 ANNO_DEF；{sub,kind,marks,gates,labels} */
   state.roomExcluded = {};     /* 手动"此角色到不了"：{角色:{区域:[房间]}}，直接剔除出分母 */
   state.roomStrict = true;     /* 完成度口径：true=只算当前角色可达的房间 */
   /* 房间卡是否全屏：默认全屏（P4 起）。右栏清单只在全屏时可见，默认紧凑会让
@@ -2574,10 +2630,6 @@ function parseSave(raw, onProgress){
      默认矢量——实机图要 0.4~3.7 s 才算得出来，不打招呼就换成它等于让每间房都变慢。
      config.ui.roomCardStyle 有值时以配置为准（已在 DEFAULT_UI 登记）。 */
   state.roomCardStyle = 'vector';
-  /* 区域地图底图（P0）：默认关。底图是游戏自带的 map_<reg>.png（1px = 1tile，
-     与房间方块同一坐标系），只作背景参考，不替代矢量方块。
-     config.ui.mapBase 有值时以配置为准（已在 DEFAULT_UI 登记）。 */
-  state.mapBase = false;
   state.muFilter = 'unseen';   /* 地图弹窗里的房间号清单标签：all / unseen / seen */
   state.sources = [];          /* 来源清单（Original / Downpour / Watcher / 各模组） */
   state.sourcePresets = ['Original','Downpour','Watcher','Mod'];
@@ -3240,6 +3292,70 @@ function parseSave(raw, onProgress){
     toastTimer = setTimeout(function(){ el.classList.remove('on'); }, 2200);
   }
 
+  /* ---------- 导出落盘（W5b）：后端「另存为」+ 路径提示 ----------
+     以前用 `<a download>`：文件落进 WebView2 自己的下载目录，页面既拿不到路径、也没法提示，
+     用户点完只知道"下过了"，不知道在哪儿（主人 2026-11-22 报的）。现在把内容交给后端，
+     由它弹系统「另存为」→ 写盘 → 返回真实路径，右下角再浮一张卡写明"存到哪"，可一键定位。 */
+  function exportBytes(name, payload, kind){
+    if (!hasBridge()) return Promise.reject(new Error('NATIVE_UNAVAILABLE'));
+    return bridgeCall('export_save', name, payload, kind);
+  }
+  /* blob → data URL（PNG 只能走二进制，文本通道会把字节改坏） */
+  function blobToDataUrl(blob){
+    return new Promise(function(resolve, reject){
+      var fr = new FileReader();
+      fr.onload = function(){ resolve(String(fr.result || '')); };
+      fr.onerror = function(){ reject(fr.error || new Error('read_failed')); };
+      fr.readAsDataURL(blob);
+    });
+  }
+  var exportTipTimer = 0;
+  function exportTipHide(){
+    var el = $('export-tip');
+    if (el) el.classList.remove('on');
+  }
+  /* 成功才提示路径；用户自己取消（canceled）不提示任何东西——那是他要的结果 */
+  function exportTipShow(res, label, extra){
+    if (!res || !res.ok) return false;
+    var el = $('export-tip');
+    if (!el) return false;
+    /* 生成过程中那句「正在生成…」要收掉，否则会和「已保存 · 路径」同时挂着 */
+    clearTimeout(toastTimer);
+    var tEl = $('toast');
+    if (tEl) tEl.classList.remove('on');
+    var bytes = res.bytes || 0;
+    var size = bytes >= 1048576
+      ? (bytes / 1048576).toFixed(2) + ' MB'
+      : Math.max(1, Math.round(bytes / 1024)) + ' KB';
+    el.innerHTML =
+      '<div class="et-head">' + esc(label || '已导出') + ' · ' + esc(res.name || '') + '</div>' +
+      '<div class="et-sub">' + size + (extra ? ' · ' + esc(extra) : '') + ' · 保存在：</div>' +
+      '<div class="et-path">' + esc(res.path || '') + '</div>' +
+      '<div class="et-row">' +
+        '<button class="btn ghost" type="button" data-et="open">打开所在文件夹</button>' +
+        '<button class="btn ghost" type="button" data-et="close">知道了</button>' +
+      '</div>';
+    el.classList.add('on');
+    el.onclick = function(ev){
+      var b = ev.target && ev.target.closest ? ev.target.closest('[data-et]') : null;
+      if (!b) return;
+      if (b.getAttribute('data-et') === 'open'){
+        bridgeCall('open_export_path', res.path).catch(function(err){
+          toast('打不开文件夹：' + ((err && err.message) || '桌面桥接不可用'));
+        });
+      }
+      exportTipHide();
+    };
+    clearTimeout(exportTipTimer);
+    exportTipTimer = setTimeout(exportTipHide, 15000);   /* 够看清路径，也不至于一直挡着 */
+    return true;
+  }
+  function exportFailed(res, err){
+    if (res && res.canceled) return;          /* 用户在对话框里点了取消 */
+    var why = (res && res.error) || (err && err.message) || '未知错误';
+    toast('导出失败：' + why);
+  }
+
   /* ---------------- 视图切换 ---------------- */
   function showDrop(){
     drop.hidden = false; loading.hidden = true; error.hidden = true; result.hidden = true;
@@ -3786,7 +3902,6 @@ function parseSave(raw, onProgress){
         ? ' · 仅地图：没有 world 文件，不参与分母'
         : (on ? ' · 参与计算' : ' · 已熄灭，不参与计算');
       if (L.upToDate === false) tip += ' · 源文件已变化，建议重新导入';
-      if (L.hasMap) tip += ' · 有底图';
       tip += '（点击' + (on ? '熄灭' : '点亮') + '）';
       return '<button class="' + cls + '" type="button" data-src="' + esc(L.sourceId || L.id) + '" data-tip="' + esc(tip) + '">' +
         '<span class="sc-n">' + esc(name) + '</span>' +
@@ -3904,7 +4019,7 @@ function parseSave(raw, onProgress){
 
       return '<tr>' +
         '<td><span class="region-code">' + esc(r.name) + '</span>' +
-          (hasMapCoords(r.name)
+          (canOpenMap(r.name)
             ? '<button class="sort-btn" style="margin-left:6px;padding:2px 7px" type="button" data-map="' + esc(String(r.name).toUpperCase()) + '">图</button>'
             : '') +
           (gxGraphable(r.name)
@@ -4053,7 +4168,7 @@ function parseSave(raw, onProgress){
         '<div class="untouched-chips">' + untouched.map(function(k){
           var info = regionData(k) || {};
           var zh = info.zh || info.nameZh || '';
-          return '<button class="mu-chip' + (hasMapCoords(k) ? '' : ' nocoord') + '" type="button" data-map="' +
+          return '<button class="mu-chip' + (canOpenMap(k) ? '' : ' nocoord') + '" type="button" data-map="' +
             esc(k) + '">' + esc(k) + (zh ? ' ' + esc(zh) : '') + '</button>';
         }).join('') + '</div></details>'
       : '';
@@ -4556,7 +4671,9 @@ function parseSave(raw, onProgress){
       '· 只有地图、没有 <code>world_&lt;reg&gt;.txt</code> 的来源标「仅地图」，不参与分母（缺庇护所/大门标记，也不保证完整）。<br>' +
       '· 「来源未知」= 存档里去过的房间，但没有任何已导入来源认领，<b>不计入分母</b>，只在行内标出。<br>' +
       '· 来源名称可以在「区域数据」里改名，也可以导入时直接填（快捷标签 Original / Downpour / Watcher / Mod）。<br>' +
-      '地图视图按来源切层：每层坐标属于各自的底图，<b>不会跨层混画</b>，切层时整张底图一起换。' +
+      '地图视图画的是<b>整区一次的几何排布</b>：各层房间合并按门连通摆放，没有"按来源切层"' +
+      '（同一间房只会在图上出现一次）；来源只决定清单与分母。<b>没有地形文件的房间</b>会列在清单的' +
+      '「无地形文件」一栏，画不到图上。' +
       '</div>';
     h += FIELD_GROUPS.map(function(g){
       return '<div class="doc-group"><h4>' + esc(g.title) + '</h4><div class="doc-list">' +
@@ -4725,24 +4842,28 @@ function parseSave(raw, onProgress){
   $('export-md').addEventListener('click', exportMarkdown);
 
   /* ---------------- 房间卡配色 ----------------
-     默认值就是编辑器几何视图的原色：实心/背景 #2F2F2F、可攀爬墙 #3C3C3C、空气 #535353、管道 #777777。
+     默认值与几何图（`RG_ITEMS`）**同一套**：岩壁 #000000、背景结构 #637178、管道 #FFFFFF；
+     `air`（可通行）与 `climb` 的默认值是区域提取色的兜底，实际显示会按房间所在区域覆盖。
      用户可以逐项改成自己的色板，暗色 / 亮色各存一套，写进 config.json 的 ui.roomPalette。 */
   var ROOM_PALETTE_ITEMS = [
     { key:'air',      label:'空气',        css:'--rm-air' },
     { key:'solid',    label:'实心 / 背景', css:'--rm-solid' },
     { key:'slope',    label:'斜面',        css:'--rm-slope' },
-    { key:'climb',    label:'可攀爬墙',    css:'--rm-climb' },
+    { key:'climb',    label:'背景结构',    css:'--rm-climb' },
     { key:'pipe',     label:'管道',        css:'--rm-pipe' },
     { key:'beam',     label:'杆子',        css:'--rm-beam' },
-    { key:'exit',     label:'出口',        css:'--rm-exit' },
+    { key:'exit',     label:'通道入口',    css:'--rm-exit' },
     { key:'den',      label:'巢穴',        css:'--rm-den' },
     { key:'creature', label:'生物通道',    css:'--rm-creature' }
   ];
+  /* 房间卡与几何图**同一套色**（V1.15 定案：地图覆盖房间卡）。
+     `air` / `climb`（背景结构）由区域调色板提取，这里只是拿不到提取值时的兜底；
+     两套主题共用一个默认，旧配置里的 light 仍然能读（只是默认值一样了）。 */
   var ROOM_PALETTE_DEFAULT = {
-    dark: { air:'#535353', solid:'#2f2f2f', slope:'#2f2f2f', climb:'#3c3c3c',
-            pipe:'#777777', beam:'#f2c66d', exit:'#2fed2f', den:'#ed2f2f', creature:'#2f2fed' },
-    light:{ air:'#ffffff', solid:'#c3c3c3', slope:'#c3c3c3', climb:'#e2e2e2',
-            pipe:'#6a6a6a', beam:'#b4761a', exit:'#12a012', den:'#b01818', creature:'#2020c0' }
+    dark: { air:'#8C97AF', solid:'#000000', slope:'#2F2F2F', climb:'#637178',
+            pipe:'#FFFFFF', beam:'#374D5D', exit:'#2FED2F', den:'#ED2F2F', creature:'#2F2FED' },
+    light:{ air:'#8C97AF', solid:'#000000', slope:'#2F2F2F', climb:'#637178',
+            pipe:'#FFFFFF', beam:'#374D5D', exit:'#2FED2F', den:'#ED2F2F', creature:'#2F2FED' }
   };
   var rpTheme = 'dark';
 
@@ -4981,13 +5102,13 @@ function parseSave(raw, onProgress){
       } else {
         sub.push('完整清单');
       }
-      sub.push(L.hasMap ? '底图' : '无底图');
       if (L.upToDate === false) sub.push('源文件已变化');
       return '<div class="layer-row">' +
         '<button class="src-chip' + (L.enabled ? ' on' : '') + ' k-' + esc(L.sourceKind || 'mod') + (L.mapOnly ? ' maponly' : '') + '" type="button" ' +
           'data-src="' + esc(L.sourceId || L.id) + '" data-tip="' + esc((L.sourceName || L.label || '') + '：点击切换是否参与计算') + '">' +
           '<span class="sc-n">' + esc(L.sourceName || L.label || L.id) + '</span><b>' + (L.rooms || 0) + '</b></button>' +
-        (L.hasMap ? '<button class="sort-btn lr-btn" type="button" data-map="' + esc(r.code) + '" data-layer="' + esc(L.id) + '">地图</button>' : '') +
+        /* 地图按钮不再看 hasMap：几何图只需要房间数据，跟 map_image 有没有无关 */
+        ((L.rooms || 0) ? '<button class="sort-btn lr-btn" type="button" data-map="' + esc(r.code) + '" data-layer="' + esc(L.id) + '">地图</button>' : '') +
         '<span class="lr-meta">' + esc(sub.join(' · ')) + '</span>' +
         '<button class="sort-btn lr-btn" type="button" data-rename="' + esc(L.sourceId || L.id) + '" data-current="' + esc(L.sourceName || L.label || '') + '">改名</button>' +
         '<button class="sort-btn lr-btn" type="button" data-dellayer="' + esc(L.id) + '" data-code="' + esc(r.code) + '">移除</button>' +
@@ -5028,18 +5149,6 @@ function parseSave(raw, onProgress){
     var body = list.length
       ? list.map(regionCard).join('')
       : '<div class="map-empty">还没有导入任何区域数据。<br>先点「导入游戏原版数据」拿到所有原版/DLC 区域的完整房间清单。</div>';
-    // 底图只记路径：换机器 / 挪模组目录后路径会失效，这里给个可操作提示
-    if (list.length){
-      var withMap = list.filter(function(r){ return r.hasMap; }).length;
-      if (!withMap){
-        head += '<div class="format-note" style="margin-bottom:12px;color:#f0c674">' +
-          '所有底图路径都不可用（多半是换了机器或移动过游戏/模组目录）。' +
-          '点「导入游戏原版数据」重新扫描本机路径即可，房间清单不受影响。</div>';
-      } else if (withMap < list.length){
-        head += '<div class="format-note" style="margin-bottom:12px;color:var(--dim)">' +
-          (list.length - withMap) + ' 个区域的底图路径不可用（模组被卸载或移动过）；清单与完成度照常。</div>';
-      }
-    }
     modalBody.innerHTML = head + body;
     bindRegionActions();
     showGameHint();
@@ -5424,88 +5533,43 @@ function parseSave(raw, onProgress){
     loadRegions();
   }
 
-  /* ---------------- 区域地图（矢量渲染，不读底图） ---------------- */
+  /* ---------------- 区域地图（几何图 + 房间清单，V1.20） ---------------- */
 
-  /* 只要有一版地图给出过坐标就能画图——不再依赖 map_<reg>.png 是否还在 */
-  function hasMapCoords(code){
+  /* 能不能开图：V1.20 起区域地图 = 几何图，只看这版数据里有没有房间。
+     不再看 `map_image` 的图标矩形——那张图不是给玩家看的，几何图也不需要它
+     （没有地形文件的房间会进清单的「无地形文件」一栏，不影响开图）。 */
+  function canOpenMap(code){
     var rd = regionData(code);
     if (!rd) return false;
-    return (rd.layers || []).some(function(L){
-      return (L.rooms || []).some(function(room){ return room.map; });
-    });
+    return (rd.layers || []).some(function(L){ return (L.rooms || []).length > 0; });
   }
 
   /* 房间矩形直接摊成 SVG：坐标就是 region_data 里的 map.x/y/w/h，
      房间集合走 regionRoomSets()，与区域表的完成度同一个口径。
      不再读取 map_<reg>.png —— 那张开发者截图既糊又抢视线。 */
 
-  var MAP_VIEW_PAD = 26;
-
-  function mapRoomMeta(rd){
-    var layerOf = {}, nbOf = {};
-    ((rd && rd.layers) || []).forEach(function(L){
-      (L.rooms || []).forEach(function(room){
-        var k = String(room.name).toUpperCase();
-        if (layerOf[k] == null && room.layer != null) layerOf[k] = String(room.layer);
-        if (!nbOf[k] && (room.neighbors || []).length){
-          nbOf[k] = room.neighbors.map(function(n){ return String(n).toUpperCase(); });
-        }
-      });
-    });
-    return { layerOf: layerOf, nbOf: nbOf };
-  }
-
-  function mapBoxGap(a, b){
-    var dx = Math.max(0, Math.max(a.x, b.x) - Math.min(a.x + a.w, b.x + b.w));
-    var dy = Math.max(0, Math.max(a.y, b.y) - Math.min(a.y + a.h, b.y + b.h));
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  /* 边到边连线：从 A 靠着 B 的那条边出发，落到 B 对应的边，取重叠段的中点。
-     这样线短、方向对，不会从房间中心斜着穿出去。 */
-  function mapLink(a, b){
-    var acx = a.x + a.w / 2, acy = a.y + a.h / 2;
-    var bcx = b.x + b.w / 2, bcy = b.y + b.h / 2;
-    var dx = bcx - acx, dy = bcy - acy;
-    var x1, y1, x2, y2;
-    if (Math.abs(dx) >= Math.abs(dy)){
-      var lo = Math.max(a.y, b.y), hi = Math.min(a.y + a.h, b.y + b.h);
-      var yy = lo < hi ? (lo + hi) / 2 : (acy + bcy) / 2;
-      y1 = y2 = yy;
-      if (dx >= 0){ x1 = a.x + a.w; x2 = b.x; } else { x1 = a.x; x2 = b.x + b.w; }
-    } else {
-      var lx = Math.max(a.x, b.x), hx = Math.min(a.x + a.w, b.x + b.w);
-      var xx = lx < hx ? (lx + hx) / 2 : (acx + bcx) / 2;
-      x1 = x2 = xx;
-      if (dy >= 0){ y1 = a.y + a.h; y2 = b.y; } else { y1 = a.y; y2 = b.y + b.h; }
-    }
-    return [x1, y1, x2, y2];
-  }
-
-  function mapBounds(list){
-    if (!list.length) return null;
-    var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
-    list.forEach(function(r){
-      x1 = Math.min(x1, r.m.x); y1 = Math.min(y1, r.m.y);
-      x2 = Math.max(x2, r.m.x + r.m.w); y2 = Math.max(y2, r.m.y + r.m.h);
-    });
-    return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
-  }
-
-  function mapViewBox(list){
-    var b = mapBounds(list);
-    if (!b) return null;
-    return [b.x - MAP_VIEW_PAD, b.y - MAP_VIEW_PAD, b.w + MAP_VIEW_PAD * 2, b.h + MAP_VIEW_PAD * 2];
-  }
+  /* ---------------- 区域地图 = 几何图 + 房间清单 ----------------
+     V1.20 定案（2026-11-22，主人拍板）：
+       · **几何图就是区域地图**。方块图那套（`map_image` 的图标矩形 + `map_<reg>.png` 底图 +
+         按层切 viewBox）整个下线，`openMap` 直接出 `regmap_svg`。
+       · 层按钮删掉：几何图是整区一次布局（各层房间合并按门连通摆放），没有"层坐标系"可切。
+       · 右侧房间清单保留，分母**以几何图为唯一真值**：图上有地形的房间才进清单；
+         清单里有、图上没有的（没有地形文件）单独列一栏，点了只开房间卡。
+       · 已探索 / 未探索：几何图给 `<g class="rm">` 打 `seen` 类，已探索会显示一圈高亮框；
+         清单切标签时用 `data-filter` 把不在当前标签里的房间压暗。
+     缩放改 viewBox（不是 CSS transform，后者放大就糊），放大到 2.2 倍自动换高清层。 */
 
   function openMap(code, layerId){
+    /* `layerId` 已废弃（层过滤随方块图一起下线），保留形参只为不改 8 个调用点 */
+    if (!hasBridge()){ toast('区域地图要算布局，得有桌面壳'); return; }
     var rd = regionData(code);
     if (!rd){ toast('该区域没有导入数据'); return; }
 
+    var KEY = String(code).toUpperCase();
     var campaign = currentCampaign();
     var slugcat = campaign ? campaign.slugcat : '';
 
-    /* 与区域表同口径：点亮来源的并集 + 变体 + 条件房间剔除 */
+    /* 房间清单仍走 regionRoomSets：与区域表、完成度同一口径（含变体与条件房间剔除） */
     var sets = regionRoomSets(rd, slugcat);
     if (!sets || !sets.total){
       var why = usableLayers(rd, slugcat).length ? '来源被全部熄灭' : '只有地图、没有房间清单';
@@ -5514,180 +5578,220 @@ function parseSave(raw, onProgress){
       return;
     }
 
-    var visited = {}, pearls = {}, regionState = null;
+    var visited = {};
     if (campaign){
       (campaign.regions || []).forEach(function(r){
-        if (String(r.name).toUpperCase() !== String(code).toUpperCase()) return;
-        regionState = r;
+        if (String(r.name).toUpperCase() !== KEY) return;
         (r.roomList || []).forEach(function(n){ visited[String(n).toUpperCase()] = 1; });
-        (r.pearlRooms || []).forEach(function(n){ pearls[String(n).toUpperCase()] = 1; });
       });
     }
     var ghosts = (campaign && campaign.ghosts) || {};
-    var echoCount = ghosts[code] || ghosts[String(code).toUpperCase()] || 0;
-
-    var meta = mapRoomMeta(rd);
-    var rooms = [], noCoord = [], unvisited = [];
-    Object.keys(sets.names).sort().forEach(function(key){
-      var item = {
-        name: key,
-        m: sets.coords[key] || null,
-        layer: meta.layerOf[key] != null ? meta.layerOf[key] : '1',
-        shelter: !!sets.shelters[key],
-        gate: !!sets.gates[key],
-        seen: roomSeen(code, key, !!visited[key]),
-        pearl: !!pearls[key]
-      };
-      if (!item.seen) unvisited.push(key);
-      if (item.m) rooms.push(item); else noCoord.push(item);
-    });
-
-    var total = Object.keys(sets.names).length;
-    var seenCount = total - unvisited.length;
-    var pct = total ? seenCount / total * 100 : 0;
-
-    /* ---- 分层 ---- */
-    var layerRooms = {};
-    rooms.forEach(function(r){ (layerRooms[r.layer] = layerRooms[r.layer] || []).push(r); });
-    var layerList = Object.keys(layerRooms).sort();
-
-    /* ---- 同层连接（跨层不画：那是楼上楼下，不是平面邻居） ---- */
-    var byName = {};
-    rooms.forEach(function(r){ byName[r.name] = r; });
-
-    /* 与其它层相通的房间（跨层不画线，改用角标提示） */
-    var crossOf = {};
-    rooms.forEach(function(r){
-      (meta.nbOf[r.name] || []).forEach(function(nb){
-        var o = byName[nb];
-        if (o && o.layer !== r.layer) crossOf[r.name] = 1;
-      });
-    });
-
-    var linkSeen = {}, linkHTML = '';
-    rooms.forEach(function(r){
-      (meta.nbOf[r.name] || []).forEach(function(nb){
-        var other = byName[nb];
-        if (!other || other.layer !== r.layer) return;
-        var k = r.name < nb ? r.name + '|' + nb : nb + '|' + r.name;
-        if (linkSeen[k]) return;
-        linkSeen[k] = 1;
-        if (mapBoxGap(r.m, other.m) <= 6) return;   /* 本来就贴着的，画线只会在缝里留线头 */
-        var g = mapLink(r.m, other.m);
-        linkHTML += '<line class="link" data-l="' + esc(r.layer) + '" x1="' + g[0].toFixed(1) +
-          '" y1="' + g[1].toFixed(1) + '" x2="' + g[2].toFixed(1) + '" y2="' + g[3].toFixed(1) + '"/>';
-      });
-    });
-
-    /* ---- 房间方块 ---- */
-    var roomHTML = '';
-    rooms.forEach(function(r){
-      var cls = 'room' + (r.seen ? ' seen' : '') + (r.gate ? ' gate' : '') + (r.shelter ? ' shelter' : '');
-      var tip = r.name + ' · 第 ' + r.layer + ' 层' +
-        (r.shelter ? ' · 庇护所' : '') + (r.gate ? ' · 业力门' : '') +
-        (r.pearl ? ' · 有珍珠' : '');
-      var seenAttr = ' data-seen="' + (r.seen ? 1 : 0) + '"';
-      roomHTML += '<rect class="' + cls + '" data-l="' + esc(r.layer) + '" data-room="' + esc(r.name) + '"' +
-        seenAttr + ' x="' + r.m.x.toFixed(1) + '" y="' + r.m.y.toFixed(1) +
-        '" width="' + r.m.w.toFixed(1) + '" height="' + r.m.h.toFixed(1) + '" rx="2.5">' +
-        '<title>' + esc(tip) + '</title></rect>';
-      if (r.pearl){
-        var pr = Math.max(1.6, Math.min(6, Math.min(r.m.w, r.m.h) * 0.24));
-        roomHTML += '<circle class="pearl" data-l="' + esc(r.layer) + '"' + seenAttr + ' cx="' +
-          (r.m.x + r.m.w / 2).toFixed(1) + '" cy="' + (r.m.y + r.m.h / 2).toFixed(1) +
-          '" r="' + pr.toFixed(1) + '"/>';
-      }
-      /* 庇护所不靠描边颜色（会和"已探索"的主题色撞），改用中心小方块 */
-      if (r.shelter){
-        var sw = Math.max(4, Math.min(9, Math.min(r.m.w, r.m.h) * 0.34));
-        roomHTML += '<rect class="shelter-mark" data-l="' + esc(r.layer) + '"' + seenAttr + ' x="' +
-          (r.m.x + r.m.w / 2 - sw / 2).toFixed(1) + '" y="' + (r.m.y + r.m.h / 2 - sw / 2).toFixed(1) +
-          '" width="' + sw.toFixed(1) + '" height="' + sw.toFixed(1) + '" rx="1"/>';
-      }
-      /* 和别的层相通的房间：左上角点一下，解释它为什么在平面图上看起来是孤立的 */
-      if (crossOf[r.name]){
-        roomHTML += '<circle class="cross-mark" data-l="' + esc(r.layer) + '"' + seenAttr + ' cx="' +
-          (r.m.x + 4.5).toFixed(1) + '" cy="' + (r.m.y + 4.5).toFixed(1) + '" r="2.1"/>';
-      }
-    });
-
-    var vbAll = mapViewBox(rooms) || [0, 0, 100, 100];
-    var vbOf = { all: vbAll };
-    layerList.forEach(function(lv){
-      var vb = mapViewBox(layerRooms[lv]);
-      if (vb) vbOf[lv] = vb;
-    });
-
-    var layerBtns = layerList.map(function(lv){
-      return '<button class="sort-btn" type="button" data-ml="' + esc(lv) + '">' +
-        (lv === '0' ? '上层' : lv === '1' ? '中层' : lv === '2' ? '下层' : '第 ' + esc(lv) + ' 层') +
-        ' <b>' + layerRooms[lv].length + '</b></button>';
-    }).join('');
-
-    /* ---- 房间号清单：全部 / 未探索 / 已探索 ----
-       三者共用同一份分母（sets.names），所以「全部 = 未探索 + 已探索」恒成立。 */
+    var echoCount = ghosts[code] || ghosts[KEY] || 0;
     var allNames = Object.keys(sets.names).sort();
-    function muList(filter){
-      if (filter === 'all') return allNames;
-      if (filter === 'seen') return allNames.filter(function(n){ return !!visited[n]; });
-      return unvisited;
+
+    /* ---- 清单状态：分母来自图上真实的房间（SVG 到了才知道） ---- */
+    var geoReady = false;
+    var geoIdx = {};          /* 大写房号 → 图上的真实名字 */
+    var mapNames = [];        /* 图上有地形的房间（已排序） */
+    var noFile = [];          /* 清单里有、图上没有（无地形文件） */
+    var listState = ['all', 'unseen', 'seen'].indexOf(state.muFilter) >= 0 ? state.muFilter : 'unseen';
+    var listCollapsed = false;
+    var pendingFocus = '';
+
+    function isSeen(nm){ return roomSeen(code, nm, !!visited[String(nm).toUpperCase()]); }
+    function byTab(list, f){
+      if (f === 'seen') return list.filter(isSeen);
+      if (f === 'unseen') return list.filter(function(n){ return !isSeen(n); });
+      return list;
     }
-    function muHintText(filter){
-      var tail = '点房间号高亮定位';
-      if (filter === 'unseen') return '地图上<b>已探索</b>的房间变暗 · ' + tail;
-      if (filter === 'seen') return '地图上<b>未探索</b>的房间变暗 · ' + tail;
+    function counts(){
+      var s = 0;
+      mapNames.forEach(function(n){ if (isSeen(n)) s++; });
+      return { total: mapNames.length, seen: s, unseen: mapNames.length - s };
+    }
+    function muHintText(f){
+      var tail = '点房间号居中定位并开卡';
+      if (f === 'unseen') return '地图上<b>已探索</b>的房间变暗 · ' + tail;
+      if (f === 'seen') return '地图上<b>未探索</b>的房间变暗 · ' + tail;
       return tail;
     }
-    function muChipsHTML(filter){
-      var list = muList(filter);
+    function chipsHTML(list, f){
       if (!list.length){
         return '<div class="mu-none">' +
-          (filter === 'unseen' ? '这个区域的房间全走过了' :
-           filter === 'seen' ? '这间房一间都还没去过' : '没有房间') + '</div>';
+          (f === 'unseen' ? '这个区域的房间全走过了' :
+           f === 'seen' ? '这间房一间都还没去过' : '没有房间') + '</div>';
       }
-      return list.map(function(name){
-        var hasCoord = !!byName[name];
-        return '<button class="mu-chip' + (hasCoord ? '' : ' nocoord') +
-          (visited[name] ? ' seen' : '') + '" type="button" data-focus="' + esc(name) + '"' +
-          (hasCoord ? '' : ' title="这个房间没有任何一版地图给出坐标，只能列号"') +
-          '>' + esc(name) + '</button>';
+      return list.map(function(nm){
+        return '<button class="mu-chip' + (isSeen(nm) ? ' seen' : '') +
+          '" type="button" data-focus="' + esc(nm) + '">' + esc(nm) + '</button>';
       }).join('');
     }
-    var muTabs = [['all', '全部', total], ['unseen', '未探索', unvisited.length],
-                  ['seen', '已探索', seenCount]];
-    if (['all', 'unseen', 'seen'].indexOf(state.muFilter) < 0) state.muFilter = 'unseen';
-    var unvisitedHTML = total
-      ? '<div class="map-unvisited">' +
+    function listHTML(){
+      if (!geoReady){
+        return '<div class="map-unvisited"><div class="mu-head"><span class="mu-none">' +
+          '正在算布局…</span></div></div>';
+      }
+      var c = counts();
+      var tabs = [['all', '全部', c.total], ['unseen', '未探索', c.unseen], ['seen', '已探索', c.seen]];
+      var extra = '';
+      if (listState === 'all' && noFile.length){
+        extra = '<div class="mu-split">图上没有这 ' + noFile.length + ' 间（没有地形文件）</div>' +
+          noFile.map(function(nm){
+            return '<button class="mu-chip nocoord' + (isSeen(nm) ? ' seen' : '') +
+              '" type="button" data-nofile="' + esc(nm) + '" ' +
+              'title="没有地形文件，画不到图上；点开可以看房间卡">' + esc(nm) + '</button>';
+          }).join('');
+      }
+      return '<div class="map-unvisited">' +
           '<div class="mu-head mu-tabs">' +
-            muTabs.map(function(t){
-              return '<button class="sort-btn' + (state.muFilter === t[0] ? ' on' : '') +
+            tabs.map(function(t){
+              return '<button class="sort-btn' + (listState === t[0] ? ' on' : '') +
                 '" type="button" data-mu="' + t[0] + '">' + t[1] + ' <b>' + t[2] + '</b></button>';
             }).join('') +
             '<span class="mu-spacer"></span>' +
             '<button class="btn ghost" type="button" id="mu-copy">复制这份</button>' +
-            '<button class="btn ghost" type="button" id="mu-toggle">收起</button>' +
+            '<button class="btn ghost" type="button" id="mu-toggle">' +
+              (listCollapsed ? '展开' : '收起') + '</button>' +
           '</div>' +
-          '<div class="mu-hint" id="mu-hint">' + muHintText(state.muFilter) + '</div>' +
-          '<div class="mu-body" id="mu-body">' + muChipsHTML(state.muFilter) + '</div>' +
-          (noCoord.length ? '<div class="map-none-hint">其中 ' + noCoord.length +
-            ' 间没有坐标（虚线框），只能列号，画不到图上。</div>' : '') +
-        '</div>'
-      : '<div class="map-unvisited"><div class="mu-head"><span class="mu-none">' +
-        '这个区域没有可列的房间</span></div></div>';
+          '<div class="mu-hint" id="mu-hint">' + muHintText(listState) + '</div>' +
+          '<div class="mu-body' + (listCollapsed ? ' collapsed' : '') + '" id="mu-body">' +
+            chipsHTML(byTab(mapNames, listState), listState) + extra +
+          '</div>' +
+          (noFile.length && listState !== 'all'
+            ? '<div class="map-none-hint">另有 ' + noFile.length +
+              ' 间没有地形文件，切到「全部」可以看到。</div>' : '') +
+        '</div>';
+    }
+    function updateStat(){
+      var el = $('map-stat');
+      if (!el) return;
+      if (!geoReady){ el.textContent = '正在算布局…'; return; }
+      var c = counts();
+      var pct = c.total ? (c.seen / c.total * 100).toFixed(1) : '0.0';
+      var tail = [];
+      if (noFile.length) tail.push('另有 ' + noFile.length + ' 间无地形文件');
+      if (echoCount) tail.push('回响 ' + echoCount);
+      el.innerHTML = '图上 ' + c.total + ' 间 · 已探索 ' + c.seen + ' / ' + c.total +
+        '（' + pct + '%）' + (tail.length ? '<br>' + tail.join(' · ') : '');
+    }
+    function renderList(){
+      var box = $('map-list');
+      if (box) box.innerHTML = listHTML();
+      updateStat();
+      if (window.__rwMapCtx) window.__rwMapCtx.order = byTab(mapNames, listState);
+    }
+    function syncList(){
+      geoIdx = {};
+      mapNames = [];
+      noFile = [];
+      Array.prototype.forEach.call(stage.querySelectorAll('.rm[data-room]'), function(g){
+        var nm = g.getAttribute('data-room');
+        if (nm) geoIdx[String(nm).toUpperCase()] = nm;
+      });
+      /* 分母 = 图上真实存在的房间：图上有几间，清单就列几间。
+         反过来（清单口径里的房间没有地形）才进"无地形文件"那一栏。
+         不这么定会出现两个数字同屏打架（GW 实测：图上 124 间 / 清单口径 87 间，差 37 间
+         是别的来源与变体的房间，几何图整区都画）。 */
+      mapNames = Object.keys(geoIdx).map(function(k){ return geoIdx[k]; }).sort();
+      allNames.forEach(function(nm){
+        if (!geoIdx[String(nm).toUpperCase()]) noFile.push(nm);
+      });
+      geoReady = true;
+      renderList();
+      if (pendingFocus){
+        var pf = pendingFocus; pendingFocus = '';
+        focusRoom(pf);
+      }
+    }
 
-    var legend =
-      '<div class="map-legend">' +
-        '<span><i style="background:color-mix(in srgb,var(--accent) 58%,transparent);border-color:var(--accent)"></i>已探索</span>' +
-        '<span><i style="background:var(--rm-fill);border-color:var(--rm-line)"></i>未探索</span>' +
-        '<span><i style="background:transparent;border:1.6px dashed var(--rm-line)"></i>业力门</span>' +
-        '<span><i style="background:var(--amber);border:none"></i>庇护所</span>' +
-        '<span><i style="background:#f0e2b6;border-radius:50%"></i>珍珠房间</span>' +
-        '<span><i style="background:var(--rm-link);border-radius:50%;width:6px;height:6px"></i>与其它层相通</span>' +
-        '<span>本次显示 ' + rooms.length + ' 间（另有 ' + noCoord.length + ' 间无坐标）· 已探索 ' +
-          seenCount + ' / ' + total + '（' + pct.toFixed(1) + '%）' +
-          (echoCount ? ' · 回响 ' + echoCount + '（区域级，无房间坐标）' : '') + '</span>' +
-      '</div>';
+    /* ---- 侧栏：手动标记提示 + 配色图例 + 统计 + 房间清单 + 说明 ---- */
+    var marks = roomMarkMap(code), nMark = Object.keys(marks).length;
+    var markBar = nMark
+      ? '<div class="map-marks"><span>手动标记 ' + nMark + ' 间</span>' +
+        '<button class="btn ghost" id="map-mark-reset" type="button">还原</button></div>'
+      : '';
+    var colorLegend = '<div class="geo-legend">' + RG_ITEMS.slice(1, 10).map(function(it){
+      return '<span><i style="background:var(--rg-' + it[0] + ',' + RG_FALLBACK[it[0]] + ')"></i>' +
+        it[1] + '</span>';
+    }).join('') + '</div>';
+    var statLine = '<div class="map-legend">' +
+      '<span><i style="background:transparent;border:1.4px solid var(--accent)"></i>已探索</span>' +
+      '<span id="map-stat">正在算布局…</span></div>';
+    /* 说明折成一行（默认收起）：右侧栏要留给房间清单，展开一次就够了 */
+    var note = '<details class="geo-note-box"><summary>这张图是怎么画的</summary>' +
+      '<div class="geo-note">' +
+      '<b>算出来的</b>：房间按真实尺寸画地形，房间之间用三次贝塞尔连线，' +
+      '线压在房间上面，进到房间里的那一段半透明。<br>' +
+      '<b>已探索</b>的房间有一圈高亮框（跟随存档，手动标记也算）。<br>' +
+      '<b>水 / 酸液 / 沙</b>按房间设置画：水在岩壁下面（只有空的格子才显色），' +
+      '沙从沙面往下堆满。<br>' +
+      '<b>可通行色（含子区域色）与背景结构色</b>不手调：从区域调色板提取；' +
+      '点「设置」可以单独改本区的色卡、连线与杆子。<br>' +
+      '<b>放大 2 倍以上</b>会自动换一版更细的矢量图。<br>' +
+      '点房间开布局卡 · 滚轮缩放 · 拖拽平移 · 双击空白复位。' +
+      '</div></details>';
 
+    var html = '<div class="map-wrap" id="geo-wrap"><div class="map-main">' +
+      '<div class="map-tools">' +
+        '<span class="mlabel">区域地图</span>' +
+        '<button class="btn map-graph-btn" id="map-graph" type="button" ' +
+          'title="把整片区域的房间画成区域拓扑图">◈ 区域拓扑</button>' +
+        '<button class="btn ghost" id="geo-pal" type="button" ' +
+          'title="本区的颜色、连线、杆子、引擎">设置</button>' +
+        '<button class="btn ghost" id="geo-exp-svg" type="button" ' +
+          'title="导出这张图为矢量 SVG（整图、含本区配色与已探索框），弹出另存为让你选位置">导出 SVG</button>' +
+        '<button class="btn ghost" id="geo-exp-png" type="button" ' +
+          'title="导出 2× PNG（同一份 SVG 光栅化，像素封顶 24 MP），弹出另存为让你选位置">导出 PNG</button>' +
+        '<span class="map-hint" id="geo-meta">正在算布局…</span>' +
+      '</div>' +
+      '<div class="geo-stage" id="geo-stage" data-filter="' + esc(listState) + '">' +
+        '<div class="geo-hold" id="geo-hold">正在算布局…<br>大区域要几秒</div>' +
+        '<div class="geo-pal-pop" id="geo-pal-pop" hidden>' +
+          '<div class="geo-pal-head"><span>本区设置</span>' +
+            '<button class="btn ghost" data-rgpreset="def" type="button" title="新色卡 + 区域调色板提取色">默认</button>' +
+            '<button class="btn ghost" data-rgpreset="classic" type="button" title="旧版地图配色（青底黄管），仅作对照">经典</button>' +
+            '<button class="btn ghost" id="geo-pal-reset" type="button" title="清掉本区自定义，回到默认配色">还原</button></div>' +
+          '<div class="rp-grid" id="geo-pal-grid"></div>' +
+          '<div class="geo-curve" id="geo-curve">' +
+            '<div class="gc-head"><span>连线 / 杆子</span>' +
+              '<button class="btn ghost" id="geo-curve-reset" type="button" title="回到默认参数">还原</button></div>' +
+            '<label class="gc-row"><span>曲率</span><input type="range" id="gc-k" min="0" max="1.2" step="0.02"><i class="gc-v" id="gc-k-v"></i></label>' +
+            '<label class="gc-row"><span>最短</span><input type="range" id="gc-min" min="0" max="20" step="0.5"><i class="gc-v" id="gc-min-v"></i></label>' +
+            '<label class="gc-row"><span>最长</span><input type="range" id="gc-max" min="0" max="200" step="5"><i class="gc-v" id="gc-max-v"></i></label>' +
+            '<label class="gc-row"><span>线宽</span><input type="range" id="gc-width" min="0" max="4" step="0.1"><i class="gc-v" id="gc-width-v"></i></label>' +
+            '<label class="gc-row"><span>室内</span><input type="range" id="gc-inner" min="0" max="1" step="0.05"><i class="gc-v" id="gc-inner-v"></i></label>' +
+            '<label class="gc-row"><span>杆粗</span><input type="range" id="gc-bar" min="0.5" max="1.6" step="0.05"><i class="gc-v" id="gc-bar-v"></i></label>' +
+            '<label class="gc-row"><span>模式</span><select id="gc-mode">' +
+              '<option value="normal">沿门法线</option><option value="center">沿房间中心</option>' +
+              '<option value="straight">直连</option></select></label>' +
+            '<label class="gc-row"><span>引擎</span><select id="gc-engine">' +
+              '<option value="legacy">legacy（贴合）</option>' +
+              '<option value="zq">zq（门对齐+松弛）</option></select></label>' +
+          '</div>' +
+          '<div class="geo-anno" id="geo-anno">' +
+            '<div class="ga-head"><span>标注</span>' +
+              '<button class="btn ghost" id="geo-anno-reset" type="button" title="回到默认开关">默认</button></div>' +
+            '<div class="ga-grid">' +
+              '<label title="按子区域给房间铺不同的可通行底色"><input type="checkbox" data-ga="sub"><span>子区域色</span></label>' +
+              '<label title="在子区域中心写上名字"><input type="checkbox" data-ga="labels"><span>子区域名</span></label>' +
+            '</div>' +
+          '</div>' +
+          '<div class="geo-pal-note" id="geo-pal-note"></div>' +
+        '</div>' +
+        '<div class="map-zoom" id="geo-zoom">' +
+          '<button type="button" data-gz="out" title="缩小（滚轮下滚）">−</button>' +
+          '<span id="geo-pct">100%</span>' +
+          '<button type="button" data-gz="in" title="放大（滚轮上滚）">+</button>' +
+          '<button type="button" data-gz="fit" title="整图铺满">适应</button>' +
+        '</div>' +
+      '</div>' +
+      '</div>' +
+      '<aside class="map-side" id="map-side">' + markBar + colorLegend + statLine +
+        '<div id="map-list"></div>' + note +
+      '</aside></div>';
+
+    /* 副标题沿用方块图时代的口径：变体 / 来源 / 剔除数 / 角色。
+       几何图是整区一次布局，这些信息仍然是"这张图代表哪一套房间"的关键。 */
     var sub = (rd.zh || rd.nameZh || '') + ' ' + (rd.en || rd.nameEn || '') +
       ' · ' + (sets.variant ? '变体：' + sets.variant : '来源：' +
         ((sets.layerNames || []).join(' / ') || '本层')) +
@@ -5697,52 +5801,11 @@ function parseSave(raw, onProgress){
           + (sets.manualDropped ? '（手动 ' + sets.manualDropped + '）' : '')
         : '') +
       (slugcat ? ' · 角色：' + slugcat : '');
+    openModal('区域地图 · ' + code, sub, html, false, true);
 
-    var marks = roomMarkMap(code), nMark = Object.keys(marks).length;
-    var markBar = nMark
-      ? '<div class="map-marks"><span>手动标记 ' + nMark + ' 间</span>' +
-        '<button class="btn ghost" id="map-mark-reset" type="button">还原</button></div>'
-      : '';
-
-    openModal('区域地图 · ' + code, sub,
-      '<div class="map-wrap"><div class="map-main"><div class="map-tools" id="map-layers">' +
-        '<span class="mlabel">地图层</span>' +
-        '<button class="sort-btn on" type="button" data-ml="all">全部 <b>' + rooms.length + '</b></button>' +
-        layerBtns +
-        '<button class="sort-btn' + (state.mapBase ? ' on' : '') + '" id="map-base-btn" type="button" ' +
-          'title="叠一层游戏自带的区域底图（只作背景参考，房间方块仍是主角）">▤ 底图</button>' +
-        '<button class="btn map-graph-btn" id="map-graph" type="button" title="把整片区域的房间画成区域拓扑图">◈ 区域拓扑</button>' +
-        '<span class="map-hint">滚轮缩放 · 拖拽平移 · 双击房间居中</span>' +
-      '</div>' +
-      '<div class="map-stage" id="map-stage" data-layer="all" data-filter="' + esc(state.muFilter) + '">' +
-        '<svg id="map-svg" viewBox="' + vbAll.map(function(v){ return v.toFixed(1); }).join(' ') +
-          '" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">' +
-          '<rect class="map-sheet" id="map-sheet" x="' + vbAll[0].toFixed(1) + '" y="' + vbAll[1].toFixed(1) +
-            '" width="' + vbAll[2].toFixed(1) + '" height="' + vbAll[3].toFixed(1) + '" rx="8"/>' +
-          /* 底图（P0）：整张 map_<reg>.png 铺在 (0,0)-(W,H)。房间坐标本来就是底图像素坐标，
-             所以不需要任何换算；W/H 由桥接返回后再写进来，没加载时是 0×0，不影响布局。 */
-          '<image class="map-base" id="map-base" x="0" y="0" width="0" height="0" ' +
-            'preserveAspectRatio="none" href=""/>' +
-          '<g class="links">' + linkHTML + '</g>' +
-          '<g class="rooms">' + roomHTML + '</g>' +
-        '</svg>' +
-        '<div class="map-zoom" id="map-zoom">' +
-          '<button type="button" data-zoom="out" title="缩小（滚轮下滚）">−</button>' +
-          '<span id="map-zoom-pct">100%</span>' +
-          '<button type="button" data-zoom="in" title="放大（滚轮上滚）">+</button>' +
-          '<button type="button" data-zoom="reset" title="复位（双击空白处也行）">复位</button>' +
-        '</div>' +
-        '<div class="map-tip" id="map-tip"></div>' +
-      '</div>' +
-        '</div>' +
-        '<aside class="map-side" id="map-side">' + markBar + legend + unvisitedHTML + '</aside>' +
-      '</div>', false, true);
-
-    /* ---------------- 交互 ---------------- */
-    var stageEl = $('map-stage');
-    var svgEl = $('map-svg');
-    var tipEl = $('map-tip');
-    if (!stageEl || !svgEl) return;
+    var wrap = $('geo-wrap'), stage = $('geo-stage'), hold = $('geo-hold');
+    var metaEl = $('geo-meta'), pctEl = $('geo-pct'), listBox = $('map-list');
+    paintRegmapColors(wrap, KEY);
 
     var gbtn = $('map-graph');
     if (gbtn) gbtn.addEventListener('click', function(){ openGraph(code); });
@@ -5752,340 +5815,307 @@ function parseSave(raw, onProgress){
       confirmBox('还原探索标记',
         '这会把「' + code + '」里你手动标记的 ' + nMark + ' 间房全部清掉，恢复成跟随存档的状态。这一步不能撤销。',
         '还原', function(){
-          delete state.roomMarks[String(code).toUpperCase()];
+          delete state.roomMarks[KEY];
           if (hasBridge()) bridgeCall('save_config', { ui: { roomMarks: state.roomMarks } }).catch(function(){});
           openMap(code);
         });
     });
 
-    /* ---- 底图层（P0）--------------------------------------------------------
-       底图是游戏自带的 map_<reg>.png，1px = 1tile，与房间方块共用同一坐标系，
-       所以整张图铺在 (0,0)-(W,H) 就自动对齐，不需要任何缩放换算。
-       加载全程异步、不 await：图没到之前这里什么都不做，界面照常可用。 */
-    var baseEl = $('map-base');
-    var baseBtn = $('map-base-btn');
-    var baseCache = window.__rwMapBase || (window.__rwMapBase = {});
-    var baseSeq = 0;
+    /* ---- 配色：一个「设置」按钮 + 舞台左上角的面板（跟房间卡同一套色板控件） ---- */
+    var pop = $('geo-pal-pop'), grid = $('geo-pal-grid'), palNote = $('geo-pal-note');
 
-    function mapBasePaint(url, w, h){
-      if (!baseEl) return;
-      if (!url || !(w > 0) || !(h > 0)){
-        baseEl.removeAttribute('href');
-        baseEl.classList.remove('on');
-        return;
-      }
-      /* 只有"完全不重叠"才判定为坐标系不同源、干脆不画。
-         部分覆盖是正常的：模组/Downpour 层会把房间铺到底图范围之外（例如 GW 的
-         moreslugcats 层 bbox 2012 宽，而 map_gw.png 只有 1574），那部分没底图可叠，
-         画出来只是"边缘没有背景"，不影响对齐。 */
-      var b = mapBounds(rooms);
-      if (b && (b.x >= w || b.y >= h || b.x + b.w <= 0 || b.y + b.h <= 0)){
-        console.warn('[map-base] 底图与房间坐标完全不重叠，已跳过', b, w, h);
-        baseEl.removeAttribute('href');
-        baseEl.classList.remove('on');
-        return;
-      }
-      baseEl.setAttribute('href', url);
-      baseEl.setAttribute('width', w);
-      baseEl.setAttribute('height', h);
-      baseEl.classList.add('on');
-    }
-
-    function mapBaseApply(){
-      if (!baseEl) return;
-      if (!state.mapBase){ baseEl.classList.remove('on'); return; }
-      var hit = baseCache[code];
-      if (hit){ mapBasePaint(hit.url, hit.w, hit.h); return; }
-      if (!hasBridge()) return;
-      var seq = ++baseSeq;
-      /* bridgeCall 是位置参数展开（见 L2566），不能塞成一个对象 */
-      bridgeCall('map_image', code, layerId || null, sets.variant || 'normal')
-        .then(function(r){
-          if (seq !== baseSeq || !r || !r.ok || !r.dataUrl) return;   /* 已经换区域了 */
-          var keys = Object.keys(baseCache);
-          if (keys.length >= 8) delete baseCache[keys[0]];            /* 只留最近 8 个区 */
-          baseCache[code] = { url: r.dataUrl, w: r.width || 0, h: r.height || 0 };
-          if (state.mapBase) mapBasePaint(r.dataUrl, baseCache[code].w, baseCache[code].h);
-        })
-        .catch(function(){});
-    }
-
-    if (baseBtn && baseEl){
-      mapBaseApply();
-      baseBtn.addEventListener('click', function(){
-        state.mapBase = !state.mapBase;
-        baseBtn.classList.toggle('on', state.mapBase);
-        mapBaseApply();
-        if (hasBridge()) bridgeCall('save_config', { ui: { mapBase: state.mapBase } }).catch(function(){});
+    function rgRender(){
+      var pal = regmapColorsOf(KEY);
+      var custom = (state.regmapColors || {})[KEY] || {};
+      grid.innerHTML = RG_ITEMS.map(function(it){
+        var v = pal[it[0]];
+        return '<label class="rp-item"><input type="color" data-rgk="' + it[0] + '" value="' + v +
+          '"><span>' + esc(it[1]) + '</span>' +
+          (custom[it[0]] ? '<span class="rp-off">改</span>' : '') + '</label>';
+      }).join('');
+      if (palNote) palNote.textContent = '只影响 ' + KEY + '；可通行与背景结构默认取区域调色板';
+      Array.prototype.forEach.call(grid.querySelectorAll('[data-rgk]'), function(inp){
+        inp.addEventListener('input', function(){
+          var k = inp.getAttribute('data-rgk');
+          if (!state.regmapColors) state.regmapColors = {};
+          if (!state.regmapColors[KEY]) state.regmapColors[KEY] = {};
+          state.regmapColors[KEY][k] = inp.value;
+          wrap.style.setProperty('--rg-' + k, inp.value);
+        });
+        inp.addEventListener('change', saveRegmapColors);
       });
     }
+    rgRender();
 
-    var curLayer = 'all';
-
-    /* ---- 缩放 / 平移：改的是 svg 元素的 CSS transform，viewBox 不动 ---- */
-    var K_MIN = 1, K_MAX = 16;
-    var view = { k: 1, x: 0, y: 0 };
-    var pctEl = $('map-zoom-pct');
-
-    function curVB(){ return vbOf[curLayer] || vbOf.all; }
-
-    /* viewBox + preserveAspectRatio=meet → 绘图区在元素里是居中的一小块，
-       这里把「用户坐标 → 元素内像素」的映射算出来，缩放原点才对得上鼠标 */
-    function proj(){
-      var vb = curVB();
-      var w = svgEl.clientWidth || 1, h = svgEl.clientHeight || 1;
-      var s = Math.min(w / vb[2], h / vb[3]) || 1;
-      return { s: s, w: w, h: h,
-        ox: (w - vb[2] * s) / 2, oy: (h - vb[3] * s) / 2,
-        dw: vb[2] * s, dh: vb[3] * s };
+    /* ---- 连线 / 杆子参数（全局一套，存 config.ui.regmapCurve）---- */
+    var gcIds = { k: 'gc-k', min: 'gc-min', max: 'gc-max', width: 'gc-width',
+                  inner: 'gc-inner', bar: 'gc-bar' };
+    var gcMode = $('gc-mode');
+    function gcLabel(k, v){
+      if (k === 'width') return v === 0 ? '自动' : v;
+      if (k === 'max') return v === 0 ? '不限' : v;
+      if (k === 'inner') return v >= 1 ? '不分段' : v;
+      return v;
     }
-
-    /* 单轴限位：内容比视口小时居中；比视口大时不许拖出边界 */
-    function clampAxis(t, k, off, size, port){
-      var c = size * k;
-      if (c <= port) return (port - c) / 2 - k * off;
-      var lo = port - k * (off + size), hi = -k * off;
-      return Math.min(hi, Math.max(lo, t));
-    }
-
-    function applyView(){
-      var p = proj();
-      view.x = clampAxis(view.x, view.k, p.ox, p.dw, p.w);
-      view.y = clampAxis(view.y, view.k, p.oy, p.dh, p.h);
-      if (view.k <= 1.001){
-        svgEl.style.transform = '';
-      } else {
-        svgEl.style.transform = 'translate(' + view.x.toFixed(2) + 'px,' + view.y.toFixed(2) +
-          'px) scale(' + view.k.toFixed(3) + ')';
-      }
-      stageEl.classList.toggle('zoomed', view.k > 1.001);
-      if (pctEl) pctEl.textContent = Math.round(view.k * 100) + '%';
-    }
-
-    function resetView(){
-      view = measureHome();
-      applyView();
-    }
-
-    /* 初始视图：绝大多数区域铺满舞台即可；但 53 个区域里有 16 个是「竖长条」
-       （CC 0.4、RM/SS/DM 0.26、WSSR 0.11…），等比铺满会缩成中间一条细缝。
-       这类内容默认放大到宽度约占一半，至少看得清房间；想拉远看全貌滚轮往下滚即可。 */
-    function measureHome(){
-      var p = proj(), vb = curVB(), home = { k: 1, x: 0, y: 0 };
-      if (p.w > 1 && p.h > 1 && p.dw > 0 && p.dw / p.w < 0.42){
-        var k = Math.min(2.6, Math.max(1.02, (p.w * 0.38) / p.dw));
-        var ex = p.ox + (vb[2] / 2) * p.s;
-        var ey = p.oy + (vb[3] / 2) * p.s;
-        home = { k: k, x: p.w / 2 - ex * k, y: p.h / 2 - ey * k };
-      }
-      return home;
-    }
-
-    /* 指针在元素内的坐标（offsetLeft/offsetTop 不受 transform 影响，始终是布局位置） */
-    function localPoint(ev){
-      var b = stageEl.getBoundingClientRect();
-      return { x: ev.clientX - b.left - (svgEl.offsetLeft || 0),
-               y: ev.clientY - b.top - (svgEl.offsetTop || 0) };
-    }
-
-    function zoomAt(px, py, k2){
-      k2 = Math.max(K_MIN, Math.min(K_MAX, k2));
-      if (Math.abs(k2 - view.k) < 0.0005) return;
-      var r = k2 / view.k;
-      view.x = px - (px - view.x) * r;
-      view.y = py - (py - view.y) * r;
-      view.k = k2;
-      applyView();
-    }
-
-    /* 把某个用户坐标点搬到视口中心（并保证至少 k2 倍放大） */
-    function centerOn(ux, uy, k2){
-      var p = proj(), vb = curVB();
-      var k = Math.max(view.k, Math.min(K_MAX, k2 || 1));
-      var ex = p.ox + (ux - vb[0]) * p.s;   /* 该点在元素里的像素位置 */
-      var ey = p.oy + (uy - vb[1]) * p.s;
-      view.k = k;
-      view.x = p.w / 2 - ex * k;
-      view.y = p.h / 2 - ey * k;
-      applyView();
-    }
-
-    function setLayer(lv){
-      curLayer = lv;
-      stageEl.setAttribute('data-layer', lv);
-      var vb = vbOf[lv] || vbOf.all;
-      svgEl.setAttribute('viewBox', vb.map(function(v){ return v.toFixed(1); }).join(' '));
-      var sheet = $('map-sheet');
-      if (sheet){
-        sheet.setAttribute('x', vb[0].toFixed(1));
-        sheet.setAttribute('y', vb[1].toFixed(1));
-        sheet.setAttribute('width', vb[2].toFixed(1));
-        sheet.setAttribute('height', vb[3].toFixed(1));
-      }
-      Array.prototype.forEach.call(document.querySelectorAll('#map-layers [data-ml]'), function(b){
-        b.classList.toggle('on', b.getAttribute('data-ml') === lv);
+    function gcPaint(){
+      var c = curveOf();
+      Object.keys(gcIds).forEach(function(k){
+        var el = $(gcIds[k]), lab = $(gcIds[k] + '-v');
+        if (el) el.value = c[k];
+        if (lab) lab.textContent = gcLabel(k, c[k]);
       });
-      resetView();          /* 换层等于换坐标系，缩放必须归零 */
+      if (gcMode) gcMode.value = c.mode;
     }
-    Array.prototype.forEach.call(document.querySelectorAll('#map-layers [data-ml]'), function(btn){
-      btn.addEventListener('click', function(){ setLayer(btn.getAttribute('data-ml')); });
+    function gcSave(k, v){
+      if (!state.regmapCurve) state.regmapCurve = {};
+      state.regmapCurve[k] = v;
+      saveCurve();
+    }
+    /* 有了新参数就重出一份 SVG：布局缓存命中，只重拼串。loadSvg(.., true) 保住当前
+       viewBox，否则拖完滑杆图会跳回整图。 */
+    function geoReload(){
+      var c = curveOf();
+      var dens = hi.loaded ? 4 : 2;
+      bridgeCall('regmap_svg', code, slugcat || '', engOpts(), 2400, false, dens,
+                 { mode: c.mode, k: c.k, min: c.min, max: c.max },
+                 c.inner, c.width ? c.width : null, c.bar, annoOf()).then(function(r){
+        if (!r || !r.ok || !document.getElementById('geo-stage')) return;
+        if (loadSvg(r, true)) setMeta(' · ' + r.links + ' 边 · ' + (r.bytes / 1024).toFixed(0) + ' KB');
+      }, function(){});
+    }
+    /* 给回归脚本（build/check_regmap_tune.py）留一个「按新参数重画」的入口：
+       geoReload 是 openMap 的闭包内函数，外面拿不到。 */
+    window.__rwGeoReload = geoReload;
+    Object.keys(gcIds).forEach(function(k){
+      var el = $(gcIds[k]);
+      if (!el) return;
+      el.addEventListener('input', function(){
+        var lab = $(gcIds[k] + '-v');
+        if (lab) lab.textContent = gcLabel(k, parseFloat(el.value));
+      });
+      el.addEventListener('change', function(){
+        gcSave(k, parseFloat(el.value));
+        geoReload();
+      });
     });
-
-    /* 滚轮缩放：以鼠标位置为锚点 */
-    stageEl.addEventListener('wheel', function(ev){
-      if (!ev.deltaY) return;
-      ev.preventDefault();
-      var pt = localPoint(ev);
-      var f = Math.pow(1.0022, -ev.deltaY);
-      zoomAt(pt.x, pt.y, view.k * f);
-    }, { passive: false });
-
-    /* 拖拽平移 */
-    var drag = null;
-    function onDragMove(ev){
-      if (!drag) return;
-      var dx = ev.clientX - drag.sx, dy = ev.clientY - drag.sy;
-      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 3) return;
-      drag.moved = true;
-      stageEl.classList.add('dragging');
-      view.x = drag.vx + dx;
-      view.y = drag.vy + dy;
-      applyView();
+    if (gcMode) gcMode.addEventListener('change', function(){ gcSave('mode', gcMode.value); geoReload(); });
+    /* 引擎（W2）：换引擎要重算整个布局，直接重出一份 SVG；配置写回 config.ui.regmapEngine */
+    var gcEngine = $('gc-engine');
+    if (gcEngine){
+      gcEngine.value = state.regmapEngine || 'legacy';
+      gcEngine.addEventListener('change', function(){
+        state.regmapEngine = gcEngine.value;
+        if (hasBridge()){
+          bridgeCall('save_config', { ui: { regmapEngine: state.regmapEngine } }).catch(function(){});
+        }
+        geoReload();
+      });
     }
-    function onDragEnd(){
-      drag = null;
-      stageEl.classList.remove('dragging');
-      window.removeEventListener('mousemove', onDragMove);
-      window.removeEventListener('mouseup', onDragEnd);
-    }
-    stageEl.addEventListener('mousedown', function(ev){
-      if (ev.button !== 0) return;
-      if (view.k <= 1.001) return;                   /* 没放大时拖动没意义 */
-      if (ev.target.closest && ev.target.closest('.map-zoom')) return;
-      ev.preventDefault();
-      drag = { sx: ev.clientX, sy: ev.clientY, vx: view.x, vy: view.y, moved: false };
-      window.addEventListener('mousemove', onDragMove);
-      window.addEventListener('mouseup', onDragEnd);
-    });
-
-    /* 双击房间 → 居中放大；双击空白 → 复位 */
-    stageEl.addEventListener('dblclick', function(ev){
-      var t = ev.target;
-      if (t && t.getAttribute && t.getAttribute('data-room')){
-        var r = byName[t.getAttribute('data-room')];
-        if (r && r.m) centerOn(r.m.x + r.m.w / 2, r.m.y + r.m.h / 2, Math.max(3, view.k));
-        return;
+    var gcReset = $('geo-curve-reset');
+    if (gcReset) gcReset.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      state.regmapCurve = {};
+      state.regmapEngine = '';
+      if (gcEngine) gcEngine.value = 'legacy';
+      saveCurve();
+      if (hasBridge()){
+        bridgeCall('save_config', { ui: { regmapEngine: '' } }).catch(function(){});
       }
-      resetView();
+      gcPaint();
+      geoReload();
     });
+    gcPaint();
 
-    Array.prototype.forEach.call(document.querySelectorAll('#map-zoom [data-zoom]'), function(btn){
-      btn.addEventListener('click', function(){
-        var act = btn.getAttribute('data-zoom');
-        if (act === 'reset'){ resetView(); return; }
-        var p = proj();
-        zoomAt(p.w / 2, p.h / 2, view.k * (act === 'in' ? 1.45 : 1 / 1.45));
+    /* ---- 标注开关（全局一套，存 config.ui.regmapAnno）---- */
+    var gaBoxes = Array.prototype.slice.call(pop.querySelectorAll('[data-ga]') || []);
+    function gaPaint(){
+      var a = annoOf();
+      gaBoxes.forEach(function(box){ box.checked = !!a[box.getAttribute('data-ga')]; });
+    }
+    gaBoxes.forEach(function(box){
+      box.addEventListener('change', function(){
+        var k = box.getAttribute('data-ga');
+        if (!state.regmapAnno) state.regmapAnno = {};
+        state.regmapAnno[k] = box.checked ? 1 : 0;
+        saveAnno();
+        geoReload();
+      });
+    });
+    var gaReset = $('geo-anno-reset');
+    if (gaReset) gaReset.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      state.regmapAnno = null;
+      saveAnno();
+      gaPaint();
+      geoReload();
+    });
+    gaPaint();
+
+    var palBtn = $('geo-pal');
+    if (palBtn) palBtn.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      pop.hidden = !pop.hidden;
+      if (!pop.hidden){ rgRender(); gaPaint(); }
+    });
+    if (pop) pop.addEventListener('click', function(ev){ ev.stopPropagation(); });
+    stage.addEventListener('click', function(){ if (!pop.hidden) pop.hidden = true; });
+
+    /* 两套预设：默认（新色卡 + 提取色）/ 经典（青底黄管）。点一下整组写进本区，之后还能单项微调 */
+    Array.prototype.forEach.call(pop.querySelectorAll('[data-rgpreset]'), function(btn){
+      btn.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        var src = btn.getAttribute('data-rgpreset') === 'classic' ? RG_CLASSIC : regmapDefaults();
+        if (!state.regmapColors) state.regmapColors = {};
+        state.regmapColors[KEY] = {};
+        RG_ITEMS.forEach(function(it){
+          state.regmapColors[KEY][it[0]] = src[it[0]] || RG_FALLBACK[it[0]];
+        });
+        paintRegmapColors(wrap, KEY);
+        saveRegmapColors();
+        rgRender();
       });
     });
 
-    /* 弹窗刚插入时元素尺寸可能还没算出来，下一帧再定一次位 */
-    var booted = false;
-    function boot(){
-      if (booted || svgEl.clientWidth <= 1) return;
-      booted = true;
-      resetView();
-    }
-    boot();
-    if (window.requestAnimationFrame) requestAnimationFrame(boot);
-
-    /* 悬停提示：房间号 / 层 / 状态 */
-    function showTip(ev, rect){
-      var name = rect.getAttribute('data-room');
-      var room = byName[name];
-      if (!room) return;
-      var state = room.seen ? '已探索' : '未探索';
-      var extra = [];
-      if (room.shelter) extra.push('庇护所');
-      if (room.gate){
-        var seg = room.name.split('_');
-        extra.push('业力门' + (seg.length >= 3 ? ' → ' + seg[seg.length - 1] : ''));
-      }
-      if (room.pearl) extra.push('有珍珠');
-      var cross = (meta.nbOf[name] || []).filter(function(nb){
-        return byName[nb] && byName[nb].layer !== room.layer;
-      });
-      var crossTxt = cross.length ? '<div class="map-tier">上下连通：' + esc(cross.slice(0, 3).join('、')) +
-        (cross.length > 3 ? ' 等 ' + cross.length + ' 间' : '') + '</div>' : '';
-      tipEl.innerHTML = '<div><b>' + esc(name) + '</b> · 第 ' + esc(room.layer) + ' 层 · ' +
-        (room.seen ? '<span style="color:var(--accent)">' + state + '</span>' : state) + '</div>' +
-        (extra.length ? '<div class="map-tier">' + esc(extra.join(' · ')) + '</div>' : '') + crossTxt;
-      tipEl.classList.add('on');
-      var box = stageEl.getBoundingClientRect();
-      var x = ev.clientX - box.left + 14;
-      var y = ev.clientY - box.top + 14;
-      x = Math.min(x, box.width - tipEl.offsetWidth - 8);
-      tipEl.style.left = Math.max(4, x) + 'px';
-      tipEl.style.top = Math.max(4, y) + 'px';
-    }
-    svgEl.addEventListener('mousemove', function(ev){
-      var t = ev.target;
-      if (t && t.tagName && t.tagName.toLowerCase() === 'rect' && t.getAttribute('data-room')){
-        showTip(ev, t);
-      } else {
-        tipEl.classList.remove('on');
-      }
+    var prst = $('geo-pal-reset');
+    if (prst) prst.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      if (state.regmapColors) delete state.regmapColors[KEY];
+      paintRegmapColors(wrap, KEY);
+      saveRegmapColors();
+      rgRender();
     });
-    svgEl.addEventListener('mouseleave', function(){ tipEl.classList.remove('on'); });
 
-    /* 未探索清单：点房间号 → 切到它所在的层、居中放大并高亮 */
+    /* ---- 缩放 / 平移：改 viewBox（改 transform 会糊） ---- */
+    var svgEl = null, W = 0, H = 0, baseW = 0;
+    var vb = { x: 0, y: 0, w: 1, h: 1 };
+    var hi = { loaded: false, busy: false, timer: 0 };
+
+    function stageSize(){
+      var b = stage.getBoundingClientRect();
+      return { w: Math.max(1, b.width), h: Math.max(1, b.height) };
+    }
+    function applyVB(){
+      if (!svgEl) return;
+      svgEl.setAttribute('viewBox', vb.x.toFixed(2) + ' ' + vb.y.toFixed(2) + ' ' +
+        vb.w.toFixed(2) + ' ' + vb.h.toFixed(2));
+      if (pctEl && baseW) pctEl.textContent = Math.round(baseW / vb.w * 100) + '%';
+      /* 放大够了才值得换高清：等滚轮停下来再问，免得一路拖一路请求 */
+      if (hi.timer) clearTimeout(hi.timer);
+      hi.timer = setTimeout(maybeHiRes, 420);
+    }
+    function fitVB(){
+      if (!svgEl) return;
+      var s = stageSize();
+      var k = Math.min(s.w / W, s.h / H);
+      var w = s.w / k, h = s.h / k;
+      baseW = w;
+      vb = { x: (W - w) / 2, y: (H - h) / 2, w: w, h: h };
+      applyVB();
+    }
+    function zoomAt(px, py, f){
+      if (!svgEl) return;
+      var s = stageSize();
+      var ux = vb.x + px / s.w * vb.w, uy = vb.y + py / s.h * vb.h;
+      var w2 = Math.max(W / 40, Math.min(W * 1.8, vb.w / f));
+      var h2 = w2 * (s.h / s.w);
+      vb = { x: ux - px / s.w * w2, y: uy - py / s.h * h2, w: w2, h: h2 };
+      applyVB();
+    }
+
+    function markDim(){
+      var nSeen = 0, nAll = 0;
+      Array.prototype.forEach.call(stage.querySelectorAll('.rm'), function(g){
+        var nm = g.getAttribute('data-room') || '';
+        var seen = roomSeen(code, nm, !!visited[String(nm).toUpperCase()]);
+        nAll++;
+        /* 已探索 = 房间里那圈 `<rect class="fr">` 显示出来；未探索不压暗，
+           只在清单切标签时按 `data-filter` 临时压暗。 */
+        g.classList.toggle('seen', seen);
+        g.classList.toggle('dim', !seen);
+        if (seen) nSeen++;
+      });
+      return { seen: nSeen, all: nAll };
+    }
+    function setMeta(extra){
+      if (!metaEl) return;
+      var c = markDim();
+      metaEl.textContent = c.all + ' 间 · 已探索 ' + c.seen + '/' + c.all + (extra || '');
+    }
+
+    function loadSvg(r, keepView){
+      var old = stage.querySelector('svg');
+      if (old) old.parentNode.removeChild(old);
+      stage.insertAdjacentHTML('beforeend', r.svg);
+      svgEl = stage.querySelector('svg');
+      if (!svgEl) return false;
+      svgEl.classList.add('geo-svg');
+      W = r.w; H = r.h;
+      if (keepView) applyVB(); else fitVB();
+      return true;
+    }
+
+    function maybeHiRes(){
+      if (hi.loaded || hi.busy || !svgEl) return;
+      if (!document.getElementById('geo-stage')) return;
+      if (!(baseW && vb.w < W / 2.2)) return;         /* 没放大到 2.2 倍就别折腾 */
+      hi.busy = true;
+      var seqW = W;
+      var cv = curveOf();
+      bridgeCall('regmap_svg', code, slugcat || '', engOpts(), 2400, false, 4,
+                 { mode: cv.mode, k: cv.k, min: cv.min, max: cv.max },
+                 cv.inner, cv.width ? cv.width : null, cv.bar, annoOf()).then(function(r2){
+        hi.busy = false;
+        if (!r2 || !r2.ok || W !== seqW) return;
+        if (!document.getElementById('geo-stage')) return;
+        if (!loadSvg(r2, true)) return;
+        hi.loaded = true;
+        setMeta(' · 高清 ' + (r2.bytes / 1024).toFixed(0) + ' KB');
+      }, function(){ hi.busy = false; });
+    }
+
+    /* ---- 点房间号：居中放大 + 高亮 ---- */
     var focusTimer = null;
     function focusRoom(name){
-      var rect = svgEl.querySelector('[data-room="' + String(name).replace(/"/g, '\\"') + '"]');
-      if (!rect){ toast('这个房间没有坐标，图上画不出来'); return; }
-      var lv = rect.getAttribute('data-l');
-      if (curLayer !== 'all' && curLayer !== lv) setLayer(lv);
-      Array.prototype.forEach.call(svgEl.querySelectorAll('.room.focus'), function(el){
+      var want = String(name).toUpperCase();
+      if (!geoReady){ pendingFocus = name; return; }
+      var g = null;
+      Array.prototype.forEach.call(stage.querySelectorAll('.rm[data-room]'), function(el){
+        if (!g && String(el.getAttribute('data-room')).toUpperCase() === want) g = el;
+      });
+      if (!g){ toast(name + ' 没有地形文件，图上画不出来'); return; }
+      var bb = null;
+      try { bb = g.getBBox(); } catch (e) { bb = null; }
+      if (bb && bb.width >= 0 && bb.height >= 0){
+        var s = stageSize();
+        var cx = bb.x + bb.width / 2, cy = bb.y + bb.height / 2;
+        /* 视口至少是房间尺寸的 3.4 倍；上限整图 1/2.4，免得小房间放到只剩一格 */
+        var w2 = Math.min(W / 2.4, Math.max(Math.max(bb.width, bb.height) * 3.4, W / 26));
+        var h2 = w2 * (s.h / s.w);
+        vb = { x: cx - w2 / 2, y: cy - h2 / 2, w: w2, h: h2 };
+        applyVB();
+      }
+      Array.prototype.forEach.call(stage.querySelectorAll('.rm.focus'), function(el){
         el.classList.remove('focus');
       });
-      rect.classList.add('focus');
-      var room = byName[name];
-      if (room && room.m){
-        centerOn(room.m.x + room.m.w / 2, room.m.y + room.m.h / 2, Math.max(2.6, view.k));
-      }
+      g.classList.add('focus');
       /* 共用一支定时器：连续点不同的房间号时，不要让上一次的清除把这次的高亮擦掉 */
       if (focusTimer) clearTimeout(focusTimer);
       focusTimer = setTimeout(function(){
-        rect.classList.remove('focus');
+        g.classList.remove('focus');
         focusTimer = null;
-      }, 2600);
+      }, 2800);
     }
-    /* 清单里的房间号：点一下切层 + 居中高亮，同时弹出这间房的布局卡。
-       切标签会重建这些按钮，所以抽成函数，每次重渲后重新绑。 */
-    function bindMuChips(){
-      Array.prototype.forEach.call(document.querySelectorAll('#mu-body [data-focus]'), function(chip){
-        chip.addEventListener('click', function(){
-          var nm = chip.getAttribute('data-focus');
-          focusRoom(nm);
-          openRoomCard(code, nm);
-        });
-      });
+
+    /* 清单：事件委托，切标签重渲时不用重绑 */
+    function setTab(f){
+      if (f === listState) return;
+      listState = f;
+      state.muFilter = f;
+      stage.setAttribute('data-filter', f);
+      renderList();
     }
-    bindMuChips();
-
-    /* 给「在地图上定位」按钮一个回跳入口；order 让房间卡的上一间/下一间跟当前标签同序 */
-    window.__rwMapCtx = { code: code, focus: focusRoom, order: muList(state.muFilter) };
-
-    /* 画布上直接点房间方块 → 打开布局卡 */
-    stageEl.addEventListener('click', function(ev){
-      var t = ev.target;
-      if (!t || !t.getAttribute) return;
-      var nm = t.getAttribute('data-room');
-      if (nm) openRoomCard(code, nm);
-    });
-
-    var copyBtn = $('mu-copy');
-    if (copyBtn) copyBtn.addEventListener('click', function(){
-      var list = muList(state.muFilter);
+    function copyList(){
+      var list = byTab(mapNames, listState);
       if (!list.length){ toast('这份列表是空的'); return; }
       var text = list.join('\n');
       var done = function(){ toast('已复制 ' + list.length + ' 个房间号'); };
@@ -6097,37 +6127,395 @@ function parseSave(raw, onProgress){
         try { document.execCommand('copy'); done(); } catch (e) { toast('复制失败'); }
         document.body.removeChild(ta);
       }
-    });
-
-    /* 三个标签页：全部 / 未探索 / 已探索。只换列表内容，不动缩放与分层 */
-    Array.prototype.forEach.call(document.querySelectorAll('[data-mu]'), function(btn){
-      btn.addEventListener('click', function(){
-        var f = btn.getAttribute('data-mu');
-        if (f === state.muFilter) return;
-        state.muFilter = f;
-        Array.prototype.forEach.call(document.querySelectorAll('[data-mu]'), function(b){
-          b.classList.toggle('on', b.getAttribute('data-mu') === f);
-        });
-        /* 地图跟着变暗：只压暗不在当前标签里的方块，缩放与分层不动 */
-        if (stageEl) stageEl.setAttribute('data-filter', f);
-        if (window.__rwMapCtx) window.__rwMapCtx.order = muList(f);
-        var hintEl = $('mu-hint');
-        if (hintEl) hintEl.innerHTML = muHintText(f);
+    }
+    if (listBox) listBox.addEventListener('click', function(ev){
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      var tab = t.closest('[data-mu]');
+      if (tab){ setTab(tab.getAttribute('data-mu')); return; }
+      var chip = t.closest('[data-focus]');
+      if (chip){
+        /* 先定位再开卡（沿用方块图时代的约定：点房号 = 找到它 + 看它长什么样）。
+           卡片会盖住图，关掉卡片时地图停在这间房上、还带着高亮。 */
+        var nm = chip.getAttribute('data-focus');
+        focusRoom(nm);
+        openRoomCard(code, nm);
+        return;
+      }
+      var nf = t.closest('[data-nofile]');
+      if (nf){ openRoomCard(code, nf.getAttribute('data-nofile')); return; }
+      if (t.closest('#mu-copy')){ copyList(); return; }
+      var tg = t.closest('#mu-toggle');
+      if (tg){
         var body = $('mu-body');
         if (!body) return;
-        var collapsed = body.classList.contains('collapsed');
-        body.innerHTML = muChipsHTML(f);
-        if (collapsed) body.classList.add('collapsed');
-        bindMuChips();
+        listCollapsed = body.classList.toggle('collapsed');
+        tg.textContent = listCollapsed ? '展开' : '收起';
+      }
+    });
+
+    /* ---- W5 导出：SVG（当前画布）+ PNG（同一份 SVG 光栅化） ----
+       两条链共用 `geoExportSvgText()`：PNG 是把导出的 SVG 丢进 <img> 再画进 canvas，
+       所以"导出的 SVG"与"导出的 PNG"必然一致，也不会出现第二套画法走形的问题
+       （这是 V1.20 那条"画一遍、导出再画一遍必然走形"的延长线）。
+
+       SVG 里的颜色都是 `var(--rg-*)`，导出时把当前配色写成 `:root{…}` 塞进 `<style>`，
+       独立文件双击打开就是页面上的样子（含子区域色、内部 `--rg-cg`、已探索框）。
+       已探索是前端按存档打的 `seen` 类，克隆时天然带着，不用再传一份房间名单。 */
+    function geoExportSvgText(forPng){
+      if (!svgEl) return '';
+      var clone = svgEl.cloneNode(true);
+      /* 导出的视口是整张图，不是当前缩放；宽高给像素值，双击打开就是 1:1 */
+      clone.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+      clone.setAttribute('width', W);
+      clone.setAttribute('height', H);
+      clone.removeAttribute('style');        /* 页面上可能残留 transform，别带进文件 */
+      clone.removeAttribute('data-w');
+      clone.removeAttribute('data-h');
+      /* 只服务交互的东西：透明命中层（放大 2 倍后能占一半条目）、临时高亮与压暗 */
+      Array.prototype.forEach.call(clone.querySelectorAll('.hit'), function(el){
+        el.parentNode.removeChild(el);
+      });
+      Array.prototype.forEach.call(clone.querySelectorAll('.rm'), function(el){
+        el.classList.remove('dim');
+        el.classList.remove('focus');
+      });
+      var cs = getComputedStyle(wrap);
+      var decl = '';
+      ['sheet', 'air', 'solid', 'c', 'b', 'p', 'x', 'd', 'k', 's',
+       'link', 'door', 'seen', 'water', 'acid', 'sand', 'anno'].forEach(function(k){
+        var v = cs.getPropertyValue('--rg-' + k).trim();
+        if (v) decl += '--rg-' + k + ':' + v + ';';
+      });
+      var st = clone.querySelector('style');
+      if (st){
+        var css = st.textContent;
+        /* 光栅化到 2× 时 `vector-effect:non-scaling-stroke` 会让框线仍是 1.2 px——
+           相对整张图就细了一半。PNG 走这一支时去掉它，让线宽跟着缩放。 */
+        if (forPng) css = css.split('vector-effect:non-scaling-stroke').join('');
+        st.textContent = ':root{' + decl + '}' + css;
+      }
+      var text = new XMLSerializer().serializeToString(clone);
+      return '<?xml version="1.0" encoding="UTF-8"?>\n' + text + '\n';
+    }
+    function geoExportBase(){
+      var zh = String(rd.zh || rd.nameZh || '').trim();
+      return KEY + (zh ? '_' + zh.replace(/[\\/:*?"<>|\s]/g, '') : '') + '_map';
+    }
+    function geoExportSvg(){
+      var text = geoExportSvgText(false);
+      if (!text){ toast('图还没画完，稍等一下再导'); return; }
+      var btn = $('geo-exp-svg');
+      if (btn) btn.disabled = true;
+      exportBytes(geoExportBase() + '.svg', text, 'svg').then(function(res){
+        if (res && res.ok){
+          exportTipShow(res, '已导出 SVG 地图', '矢量');
+        } else {
+          exportFailed(res);
+        }
+      }, function(err){
+        exportFailed(null, err);
+      }).then(function(){ if (btn) btn.disabled = false; });
+    }
+    /* PNG：同一份 SVG → <img> → canvas。
+       `scale` 默认 2×；像素总数封顶 24 MP —— 大区域 2× 也够（GW 2400×1905 → 4800×3810），
+       真遇到极长的区域自动降到能放下的倍率，不至于把内存打爆。 */
+    var GEO_PNG_MAXPX = 24e6;
+    function geoExportPng(scale, opts){
+      opts = opts || {};
+      var text = geoExportSvgText(true);
+      if (!text){
+        if (opts.done) opts.done({ ok: false, error: 'no_svg' });
+        toast('图还没画完，稍等一下再导');
+        return;
+      }
+      var img = new Image();
+      img.onload = function(){
+        var k = Math.max(0.25, Math.min(scale || 2, Math.sqrt(GEO_PNG_MAXPX / Math.max(1, W * H))));
+        var cw = Math.max(1, Math.round(W * k));
+        var chh = Math.max(1, Math.round(H * k));
+        var cv = document.createElement('canvas');
+        cv.width = cw;
+        cv.height = chh;
+        var ctx = cv.getContext('2d');
+        /* 先铺底色：SVG 的 background 是 CSS 背景，有的光栅器不画它 */
+        var sheet = getComputedStyle(wrap).getPropertyValue('--rg-sheet').trim() || '#3D4448';
+        ctx.fillStyle = sheet;
+        ctx.fillRect(0, 0, cw, chh);
+        ctx.drawImage(img, 0, 0, cw, chh);
+        var finish = function(info){
+          if (opts.done) opts.done(info);
+          if (!(info.ok && opts.download)) return;
+          blobToDataUrl(info.blob).then(function(url){
+            return exportBytes(geoExportBase() + '.png', url, 'png');
+          }).then(function(res){
+            if (res && res.ok){
+              exportTipShow(res, '已导出 PNG 地图', cw + '×' + chh);
+            } else {
+              exportFailed(res);
+            }
+          }, function(err){
+            exportFailed(null, err);
+          });
+        };
+        if (!cv.toBlob){ finish({ ok: false, error: 'no_toblob' }); toast('这个环境不支持导出 PNG'); return; }
+        cv.toBlob(function(blob){
+          if (!blob){ finish({ ok: false, error: 'empty_blob' }); toast('PNG 生成失败'); return; }
+          var info = { ok: true, w: cw, h: chh, bytes: blob.size, scale: k, blob: blob };
+          if (opts.sample){
+            /* 给回归脚本一张小样（480 px 宽）：解出 PNG 数非底色像素，证明不是白图 */
+            var sw = Math.min(480, cw);
+            var sh = Math.max(1, Math.round(chh * sw / cw));
+            var sc = document.createElement('canvas');
+            sc.width = sw; sc.height = sh;
+            sc.getContext('2d').drawImage(cv, 0, 0, sw, sh);
+            info.sample = sc.toDataURL('image/png');
+            info.sampleW = sw;
+            info.sampleH = sh;
+            delete info.blob;              /* 数据 URL 已经够用；blob 不往回调里塞 */
+          }
+          finish(info);
+        }, 'image/png');
+      };
+      img.onerror = function(){
+        if (opts.done) opts.done({ ok: false, error: 'raster_failed' });
+        toast('PNG 生成失败（SVG 光栅化被拒）');
+      };
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(text);
+    }
+    var svgExp = $('geo-exp-svg');
+    if (svgExp) svgExp.addEventListener('click', geoExportSvg);
+    var pngExp = $('geo-exp-png');
+    if (pngExp) pngExp.addEventListener('click', function(){
+      pngExp.disabled = true;
+      toast('正在生成 PNG…稍后弹出保存位置');
+      geoExportPng(2, { download: true, done: function(){ pngExp.disabled = false; } });
+    });
+    /* 给回归脚本的入口：SVG 直接返字符串；PNG 异步，结果写进 window.__rwExportPng */
+    if (window.__rwTest){
+      window.__rwTest.exportSvg = function(){ return geoExportSvgText(false); };
+      window.__rwTest.exportPng = function(scale, sample){
+        window.__rwExportPng = { pending: true };
+        geoExportPng(scale || 2, { download: false, sample: !!sample, done: function(info){
+          delete info.blob;
+          window.__rwExportPng = info;
+        }});
+        return true;
+      };
+      /* 导出提示卡（W5b）：喂一条假的保存结果，验"有没有把路径写出来、按钮在不在" */
+      window.__rwTest.exportTip = function(res, label, extra){
+        return exportTipShow(res || {}, label, extra);
+      };
+      window.__rwTest.exportTipHidden = function(){
+        var el = $('export-tip');
+        return !(el && el.classList.contains('on'));
+      };
+    }
+
+    /* 给「在地图上定位」按钮一个回跳入口；order 让房间卡的上一间/下一间跟当前标签同序 */
+    window.__rwMapCtx = { code: code, focus: focusRoom, order: byTab(mapNames, listState) };
+
+    /* 浮层里的操作一律不许冒到舞台：舞台的 mousedown 会 preventDefault 并开始拖图，
+       滑杆被 preventDefault 就拖不动了，于是"拖滑杆 = 拖地图"（2026-11-21 主人报的 bug）。
+       wheel 也一样：浮层自己可滚，滚它的时候别缩放地图。 */
+    function inPop(el){
+      return !!(el && el.closest && el.closest('.geo-pal-pop'));
+    }
+    stage.addEventListener('wheel', function(ev){
+      if (inPop(ev.target)) return;
+      if (!svgEl || !ev.deltaY) return;
+      ev.preventDefault();
+      var b = stage.getBoundingClientRect();
+      zoomAt(ev.clientX - b.left, ev.clientY - b.top, Math.pow(1.0022, -ev.deltaY));
+    }, { passive: false });
+
+    var drag = null;
+    function onMove(ev){
+      if (!drag) return;
+      var dx = ev.clientX - drag.sx, dy = ev.clientY - drag.sy;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 3) return;
+      drag.moved = true;
+      stage.classList.add('dragging');
+      var s = stageSize();
+      vb.x -= dx / s.w * vb.w;
+      vb.y -= dy / s.h * vb.h;
+      drag.sx = ev.clientX; drag.sy = ev.clientY;
+      applyVB();
+    }
+    function onUp(){
+      stage.classList.remove('dragging');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setTimeout(function(){ drag = null; }, 0);   /* click 比 setTimeout 先到，吃掉这次点击 */
+    }
+    stage.addEventListener('mousedown', function(ev){
+      if (ev.button !== 0 || !svgEl) return;
+      if (inPop(ev.target)) return;
+      if (ev.target.closest && ev.target.closest('.map-zoom')) return;
+      ev.preventDefault();
+      drag = { sx: ev.clientX, sy: ev.clientY, moved: false };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+    stage.addEventListener('click', function(ev){
+      if (inPop(ev.target)) return;
+      if (drag && drag.moved) return;                 /* 拖完不算点击 */
+      var t = ev.target;
+      while (t && t !== stage && !(t.getAttribute && t.getAttribute('data-room'))) t = t.parentNode;
+      if (t && t !== stage) openRoomCard(code, t.getAttribute('data-room'));
+    });
+    stage.addEventListener('dblclick', function(ev){
+      if (inPop(ev.target)) return;                   /* 双击滑杆不要复原视图 */
+      fitVB();
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('#geo-zoom [data-gz]'), function(btn){
+      btn.addEventListener('click', function(){
+        var act = btn.getAttribute('data-gz');
+        if (act === 'fit'){ fitVB(); return; }
+        var s = stageSize();
+        zoomAt(s.w / 2, s.h / 2, act === 'in' ? 1.45 : 1 / 1.45);
       });
     });
 
-    var toggleBtn = $('mu-toggle');
-    var muBody = $('mu-body');
-    if (toggleBtn && muBody) toggleBtn.addEventListener('click', function(){
-      var collapsed = muBody.classList.toggle('collapsed');
-      toggleBtn.textContent = collapsed ? '展开' : '收起';
+    var onResize = function(){
+      if (!document.getElementById('geo-stage')){ window.removeEventListener('resize', onResize); return; }
+      if (baseW && Math.abs(vb.w - baseW) < 0.5) fitVB();   /* 只在"没放大"时重排 */
+    };
+    window.addEventListener('resize', onResize);
+
+    var cv0 = curveOf();
+    bridgeCall('regmap_svg', code, slugcat || '', engOpts(), 2400, false, 2,
+               { mode: cv0.mode, k: cv0.k, min: cv0.min, max: cv0.max },
+               cv0.inner, cv0.width ? cv0.width : null, cv0.bar, annoOf()).then(function(r){
+      if (!r || !r.ok){
+        hold.classList.add('err');
+        hold.innerHTML = '这个区域算不出来：' + esc((r && (r.error || r.detail)) || '未知错误') +
+          '<br><span style="opacity:.7">可能是房间文件缺失或区域没有可排布的房间</span>';
+        return;
+      }
+      hold.style.display = 'none';
+      if (!loadSvg(r, false)){ hold.style.display = ''; hold.textContent = 'SVG 插入失败'; return; }
+      syncList();
+      setMeta(' · ' + r.links + ' 边 · ' + (r.bytes / 1024).toFixed(0) + ' KB');
+    }, function(){
+      hold.classList.add('err');
+      hold.textContent = '桥接调用失败（后端没起来？）';
     });
+  }
+
+  /* 旧入口：几何图现在是区域地图本体，`openMapGeo` 留作别名（回归脚本与调试钩子还在用） */
+  function openMapGeo(code){ openMap(code); }
+
+  /* ---------------- 几何图的配色 / 参数（V1.20：它现在就是区域地图本体） ----------------
+     SVG 由后端 `regmap_svg` 拼好直接塞进来——页面看到的和导出的是同一份，不会走形。
+
+     三件要紧的事：
+     1. **缩放改 viewBox，不改 CSS transform。** transform:scale() 放大的是已经栅格化的
+        位图，越放越糊；改 viewBox 让浏览器按新视口重新矢量化，放到十几倍还是锐的。
+     2. **配色走 CSS 变量。** SVG 里每个元素是 `fill:var(--rg-air,#75ced5)`，页面只要在容器上
+        改变量就能换色，不用重算、不用重传 0.4–1.4 MB 的字符串。
+     3. **放大到 2.2 倍再换高清层**：默认密度 2，`vb.w < W/2.2` 时向后端再要一份密度 4 的，
+        坐标空间完全相同，只换 <svg> 元素、viewBox 不动。 */
+
+  /* 与 `core/regmap/svg.py` 的 PALETTE 一致：单独打开 SVG 文件时的兜底色。
+     页面里的**默认色**不取这里，而是跟随房间卡配色（见 regmapDefaults）。 */
+  /* 16 项色卡（V1.15 №5）：与 `core/regmap/svg.py:PALETTE` 一一对应。
+     **没有「可通行 / 背景结构」两项**——它们由区域调色板提取（`core/regmap/colors.py`），
+     按房间/子区域分组下发；也没有「腐化」（已下线）。`air` 只留兜底值。 */
+  var RG_FALLBACK = {
+    sheet: '#3D4448', air: '#8C97AF', solid: '#000000', c: '#637178', b: '#374D5D',
+    p: '#FFFFFF', x: '#2FED2F', d: '#ED2F2F', k: '#2F2FED', s: '#2F2F2F',
+    link: '#3F6F7A', door: '#9FE8EF', seen: '#FFF700',
+    water: '#5089D9', acid: '#8FC63D', sand: '#E5A462',
+    anno: '#FFFFFF'
+  };
+  var RG_ITEMS = [
+    ['sheet', '区域背景'], ['solid', '岩壁'], ['c', '背景结构'],
+    ['b', '杆子'], ['p', '管道'], ['x', '通道入口'], ['d', '巢穴'],
+    ['k', '生物通道'], ['s', '斜面'], ['water', '水体'], ['acid', '酸液'],
+    ['sand', '沙/雪'], ['link', '连线'], ['door', '门点'],
+    ['seen', '探索框'], ['anno', '子区域名']
+  ];
+  /* 只设一次、不参与自定义的两项：可通行色与背景结构由后端提取后写在房间 `<g>` 上。
+     用户若在面板里改 `c`，仍会覆盖（`--rg-c` 同名）。 */
+  var RG_EXTRACT = { air: 1, c: 0 };
+  /* 「经典」预设：V1.14 之前那套青底黄管，留着做 A/B 对照；不进默认路径。 */
+  var RG_CLASSIC = {
+    sheet: '#0a0d12', air: '#75ced5', solid: '#1a2031', c: '#3f7f88', b: '#d5f4f7',
+    p: '#e8c65a', x: '#5ec46e', d: '#c07ae0', k: '#6f9bff', s: '#2b3444',
+    link: '#3f6f7a', door: '#9fe8ef', seen: '#9fe8ef',
+    water: '#3f86c4', acid: '#8fc63d', sand: '#d8bf86', anno: '#e8f4f7'
+  };
+
+  /* S4 连线参数：与 `core/regmap/svg.py:build_svg` 的参数一一对应，**全局一套**、不分区域。
+     `width = 0` 表示自动（max(1.2, scale*0.09)）；`max = 0` 表示不限外推长度。 */
+  var CURVE_DEF = { mode: 'normal', k: 0.42, min: 1.5, max: 0, inner: 0.5, width: 0, bar: 1 };
+  function curveOf(){
+    var c = state.regmapCurve || {};
+    function num(v, d){ return (typeof v === 'number' && isFinite(v)) ? v : d; }
+    return {
+      mode: (c.mode === 'center' || c.mode === 'straight') ? c.mode : 'normal',
+      k: num(c.k, CURVE_DEF.k), min: num(c.min, CURVE_DEF.min), max: num(c.max, CURVE_DEF.max),
+      inner: num(c.inner, CURVE_DEF.inner), width: num(c.width, CURVE_DEF.width),
+      bar: num(c.bar, CURVE_DEF.bar)
+    };
+  }
+  /* 排布引擎（W2）：'' = 用后端默认；返回值直接当 regmap_svg 的 opts */
+  function engOpts(){
+    return state.regmapEngine ? { engine: state.regmapEngine } : null;
+  }
+  /* 标注（W4 / №2）：与 `core/regmap/svg.py:ANNO_DEFAULTS` 一一对应，**全局一套**。
+     只剩两项：`sub` 子区域色、`labels` 子区域名。房间图标 / 物件 / 业力门三类已删
+     （连渲染代码一起），所以这里既没有开关、也没有对应字段。 */
+  var ANNO_DEF = { sub: 1, labels: 1 };
+  function annoOf(){
+    var a = state.regmapAnno || {}, out = {};
+    Object.keys(ANNO_DEF).forEach(function(k){
+      out[k] = (a[k] === 0 || a[k] === false) ? 0 : (a[k] === 1 || a[k] === true ? 1 : ANNO_DEF[k]);
+    });
+    return out;
+  }
+  function saveAnno(){
+    if (!hasBridge()) return;
+    bridgeCall('save_config', { ui: { regmapAnno: state.regmapAnno } }).catch(function(){});
+  }
+  function saveCurve(){
+    if (!hasBridge()) return;
+    bridgeCall('save_config', { ui: { regmapCurve: state.regmapCurve } }).catch(function(){});
+  }
+
+  /* 地图默认配色 = `RG_FALLBACK` 这一套，**不再跟着房间卡走**（V1.15 定案：
+     几何图的色卡覆盖房间卡，只剩一套默认色）。`air`/`c` 只是兜底，
+     真正上屏的颜色由后端按区域调色板提取、写在每间房的 `<g style="--rg-air:…">` 上。 */
+  function regmapDefaults(){
+    var out = {};
+    RG_ITEMS.forEach(function(it){ out[it[0]] = RG_FALLBACK[it[0]]; });
+    return out;
+  }
+  function regmapColorsOf(code){
+    var base = regmapDefaults();
+    var custom = (state.regmapColors || {})[String(code || '').toUpperCase()] || {};
+    var out = {};
+    RG_ITEMS.forEach(function(it){
+      /* `c`（背景结构）**只在用户改过时才下发**：默认留空，让 SVG 里每间房的
+         `--rg-cg`（按子区域派生）生效；一旦用户选色，`--rg-c` 就优先盖掉它。 */
+      if (it[0] === 'c'){ if (custom.c) out.c = custom.c; return; }
+      out[it[0]] = custom[it[0]] || base[it[0]];
+    });
+    return out;
+  }
+  function paintRegmapColors(el, code){
+    var pal = regmapColorsOf(code);
+    RG_ITEMS.forEach(function(it){
+      var v = pal[it[0]];
+      if (v) el.style.setProperty('--rg-' + it[0], v);
+      else el.style.removeProperty('--rg-' + it[0]);
+    });
+  }
+  function saveRegmapColors(){
+    if (!hasBridge()) return;
+    bridgeCall('save_config', { ui: { regmapColors: state.regmapColors } }).catch(function(){});
   }
 
   /* ---------------- 房间关系图（Obsidian Graph View 复刻） ----------------
@@ -6556,6 +6944,8 @@ function parseSave(raw, onProgress){
           }).join('') + '</select></label>' +
         '<span class="gx-stats">' + st.rooms + ' 间 · ' + st.edges + ' 条 · 双击节点开卡</span>' +
         '<button class="btn ghost" id="gx-settings" type="button">设置</button>' +
+        '<button class="btn ghost" id="gx-export" type="button" ' +
+          'title="导出整张拓扑图为 PNG（约 4×，含全部标签；不受当前缩放影响），弹出另存为让你选位置">导出 PNG</button>' +
       '</div>' +
       '<div class="gx-stage" id="gx-stage">' +
         '<canvas id="gx-canvas"></canvas>' +
@@ -7223,9 +7613,11 @@ function parseSave(raw, onProgress){
   }
 
   /* ---------- 绘制（屏幕坐标，公式照 Obsidian 的 render） ---------- */
-  function gxDraw(){
+  /* `tcv` 传了别的画布就是"画到导出用的离屏画布"（W5）；`bg` 是底色——
+     live 画布要透明（CSS 底纹透出来），导出要实底（否则看图器里是白/棋盘格）。 */
+  function gxDraw(tcv, bg){
     if (!GX) return;
-    var cv = $('gx-canvas');
+    var cv = tcv || $('gx-canvas');
     if (!cv) return;
     var ctx = cv.getContext('2d');
     var c = GX.col, o = GX.opts, p = GX.play, cv2 = GX.cv;
@@ -7237,6 +7629,10 @@ function parseSave(raw, onProgress){
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, cv.width, cv.height);
+    if (bg){
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, cv.width, cv.height);
+    }
     ctx.setTransform(GX.dpr, 0, 0, GX.dpr, 0, 0);
 
     var vx0 = 0, vy0 = 0, vx1 = GX.cw, vy1 = GX.ch;
@@ -7384,6 +7780,107 @@ function parseSave(raw, onProgress){
     }
     ctx.globalAlpha = 1;
     ctx.textBaseline = 'alphabetic';
+  }
+
+  /* ---------- W5 导出：整张拓扑图 → PNG ----------
+     走的是**同一个 gxDraw**，所以导出图和屏幕上那张长得一样：节点半径、标签字号、连线透明度
+     全由当前的 `opts` / 配色 / 筛选决定（"所见即所导"）。
+
+     三件要紧的事：
+     1. **整张图，不是当前视口**：按 `gxBounds()`（掐掉离群点后的包围盒）+ 58 px 标签留白
+        定视口，不管用户现在放大到哪一级。
+     2. **高清**靠 `dpr`：视口仍按 CSS 尺寸算（节点大小、字号与屏幕一致），
+        再把 `dpr` 提到 3×，等于用同一套几何画出 3 倍的像素。像素封顶 30 MP。
+     3. 导出期间要**临时**把舞台尺寸/视图/悬停/播放状态换掉：这些都在 `GX` 上，
+        不改就会把"当前缩放"和"白色悬停圈"一起印进图里。改完必须还原（哪怕抛错）。 */
+  function gxExportPng(scale, opts){
+    opts = opts || {};
+    var fail = function(why){
+      if (opts.done) opts.done({ ok: false, error: why });
+      if (!opts.silent) toast('导出失败：' + why);
+    };
+    if (!GX || !GX.nodes || !GX.nodes.length) return fail('没有拓扑图');
+    var b = gxBounds();
+    if (!b) return fail('图里没有可见节点');
+    var pad = 58;                       /* 与 gxFit 同一份留白：标签在节点下方，不能贴边 */
+    var k = GX.kFit || 1;
+    var cssW = Math.max(1, (b.x1 - b.x0 + pad * 2) * k);
+    var cssH = Math.max(1, (b.y1 - b.y0 + pad * 2) * k);
+    /* 倍率：默认 3×；小图（拓扑图 fit 后往往不到 1000 CSS px 宽）自动提到"至少 3000 px 宽"，
+       仍封顶 4× 与 30 MP —— 否则 760 px 宽的图 3× 只有 2286 px，当壁纸不够看 */
+    var s = Math.max(scale || 3, 3000 / Math.max(1, cssW));
+    s = Math.max(1, Math.min(4, s, Math.sqrt(30e6 / Math.max(1, cssW * cssH))));
+    var cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(cssW * s));
+    cv.height = Math.max(1, Math.round(cssH * s));
+    var dark = document.documentElement.getAttribute('data-theme') !== 'light';
+    var bg = dark ? '#0b0e13' : '#f6f8fb';
+
+    var bak = {
+      cw: GX.cw, ch: GX.ch, dpr: GX.dpr,
+      view: { k: GX.view.k, x: GX.view.x, y: GX.view.y },
+      hover: GX.hover, sel: GX.sel, play: GX.play.on,
+      alphas: [], eAlphas: GX.eAlpha.slice()
+    };
+    GX.cw = cssW;
+    GX.ch = cssH;
+    GX.dpr = s;
+    GX.view = { k: k,
+                x: cssW / 2 - ((b.x0 + b.x1) / 2) * k,
+                y: cssH / 2 - ((b.y0 + b.y1) / 2) * k };
+    GX.hover = -1;
+    GX.sel = -1;
+    GX.play.on = false;
+    /* 出场动画没跑完时节点还是半透明的；导出要"完整"，直接把可见的拉满 */
+    GX.nodes.forEach(function(n, i){
+      bak.alphas.push(n.alpha);
+      n.alpha = gxShown(n) ? 1 : 0;
+    });
+    for (var i = 0; i < GX.eAlpha.length; i++) GX.eAlpha[i] = 1;
+    try {
+      gxDraw(cv, bg);
+    } finally {
+      GX.cw = bak.cw; GX.ch = bak.ch; GX.dpr = bak.dpr;
+      GX.view = bak.view;
+      GX.hover = bak.hover; GX.sel = bak.sel; GX.play.on = bak.play;
+      GX.nodes.forEach(function(n, j){ n.alpha = bak.alphas[j]; });
+      GX.eAlpha = bak.eAlphas;
+    }
+
+    var name = ((GX.world ? 'world' : (GX.code || 'region')) + '_topology.png');
+    var finish = function(info){
+      if (opts.done) opts.done(info);
+      if (!(info.ok && opts.download)) return;
+      /* 同区域地图：交给后端另存为，然后明确告诉你存哪了（W5b） */
+      blobToDataUrl(info.blob).then(function(dataUrl){
+        return exportBytes(name, dataUrl, 'png');
+      }).then(function(res){
+        if (res && res.ok){
+          if (!opts.silent) exportTipShow(res, '已导出拓扑图', info.w + '×' + info.h);
+        } else {
+          exportFailed(res);
+        }
+      }, function(err){
+        exportFailed(null, err);
+      });
+    };
+    if (!cv.toBlob) return fail('这个环境不支持导出 PNG');
+    cv.toBlob(function(blob){
+      if (!blob) return fail('PNG 编码失败');
+      var info = { ok: true, w: cv.width, h: cv.height, bytes: blob.size,
+                   scale: s, blob: blob };
+      if (opts.sample){
+        var sw = Math.min(480, cv.width);
+        var sh = Math.max(1, Math.round(cv.height * sw / cv.width));
+        var sc = document.createElement('canvas');
+        sc.width = sw; sc.height = sh;
+        sc.getContext('2d').drawImage(cv, 0, 0, sw, sh);
+        info.sample = sc.toDataURL('image/png');
+        info.sampleW = sw;
+        info.sampleH = sh;
+      }
+      finish(info);
+    }, 'image/png');
   }
 
   /* ---------- 交互 ---------- */
@@ -7571,6 +8068,12 @@ function parseSave(raw, onProgress){
       var pn = $('gx-panel');
       pn.hidden = !pn.hidden;
       if (!pn.hidden){ pn.innerHTML = gxSettingsHTML(); gxBindPanel(); }
+    });
+    var expBtn = $('gx-export');
+    if (expBtn) expBtn.addEventListener('click', function(){
+      expBtn.disabled = true;
+      toast('正在生成拓扑图 PNG…稍后弹出保存位置');
+      gxExportPng(3, { download: true, done: function(){ expBtn.disabled = false; } });
     });
     Array.prototype.forEach.call(document.querySelectorAll('[data-gzoom]'), function(b){
       b.addEventListener('click', function(){
@@ -8122,7 +8625,7 @@ function parseSave(raw, onProgress){
   var rmExitTargets = [];   /* 第 i 号出口指向的房间名（预取用；无去向是 null） */
   var rmHoverExit = -1;   /* 当前悬停的出口下标，-1 = 没有 */
   var rmOrder = [], rmIndex = -1;   /* 上一间/下一间：顺序＝地图弹窗当前标签的清单 */
-  var rmShowClimb = true;      /* 「可攀爬墙」底色开关：大片底色，能一键关掉 */
+  var rmShowClimb = true;      /* 「背景结构」底色开关：大片底色，能一键关掉 */
   var rmView = { scale: 1, fit: 1, tx: 0, ty: 0, cw: 0, ch: 0, dpr: 1 };
 
   /* ---------------- 实机视图（V1.2 · M2） ----------------
@@ -8483,7 +8986,7 @@ function parseSave(raw, onProgress){
        1/2 杆子      → 同列/同行连续的格子合并成线段（不合并会断成一截截）
        3  管道路线   → 含 6 的格子画管道口(T)，其余画路线点
        4/5/9 十字    → 出口 / 巢穴 / 生物通道
-       6  可攀爬墙   → 底色（解析层已经滤掉非空气格与被占用格） */
+       6  背景结构 → 底色（解析层已经滤掉非空气格与被占用格） */
   function buildRoomMarks(res){
     var vert = {}, horz = {}, list, i, o;
     for (i = 0; i < res.objects.length; i++){
@@ -8518,6 +9021,19 @@ function parseSave(raw, onProgress){
 
   function renderRoomCard(code, name, res){
     rmData = res;
+    /* 房间卡的底色跟区域地图同源（V1.15 №4）：后端把该房所在子区域的提取色算好放在
+       `res.colors`，这里写到 `.rm-stage` 的**行内**变量上——`drawRoom` 读的就是它的
+       computed style，所以不用改绘制代码，也不会污染全局 `:root`。 */
+    var stageEl = $('rm-stage');
+    if (stageEl){
+      if (res.colors && res.colors.air){
+        stageEl.style.setProperty('--rm-air', res.colors.air);
+        if (res.colors.struct) stageEl.style.setProperty('--rm-climb', res.colors.struct);
+      }else{
+        stageEl.style.removeProperty('--rm-air');
+        stageEl.style.removeProperty('--rm-climb');
+      }
+    }
     var info = roomCampaignInfo(code, name);
     var meta = roomMetaOf(code, name);
     var bits = [res.w + '×' + res.h + ' 格'];
@@ -8554,15 +9070,15 @@ function parseSave(raw, onProgress){
       '<span><i style="background:var(--rm-solid)"></i>实心 ' + solid + '</span>' +
       '<span><i style="background:var(--rm-air)"></i>空气 ' + air + '</span>' +
       (slope ? '<span><i style="background:var(--rm-slope)"></i>斜面 ' + slope + '</span>' : '') +
-      (climbCount ? '<span><i style="background:var(--rm-climb)"></i>可攀爬墙 ' + climbCount + '</span>' : '') +
+      (climbCount ? '<span><i style="background:var(--rm-climb)"></i>背景结构 ' + climbCount + '</span>' : '') +
       (beamCount ? '<span><i class="rm-lg-beam"></i>杆子 ' + beamCount + ' 段</span>' : '') +
       (portCount ? '<span><i class="rm-lg-port"></i>管道口 ' + portCount + '</span>' : '') +
       (dotCount ? '<span><i class="rm-lg-pipe"></i>管道 ' + dotCount + '</span>' : '') +
-      (byKind.exit ? '<span style="color:var(--rm-exit)"><i class="rm-lg-cross"></i>出口 ' + byKind.exit + '</span>' : '') +
+      (byKind.exit ? '<span style="color:var(--rm-exit)"><i class="rm-lg-cross"></i>通道入口 ' + byKind.exit + '</span>' : '') +
       (byKind.den ? '<span style="color:var(--rm-den)"><i class="rm-lg-cross"></i>巢穴 ' + byKind.den + '</span>' : '') +
       (byKind.creature ? '<span style="color:var(--rm-creature)"><i class="rm-lg-cross"></i>生物通道 ' + byKind.creature + '</span>' : '') +
       (climbCount ? '<button class="rm-toggle' + (rmShowClimb ? ' on' : '') +
-        '" type="button" id="rm-climb-toggle" title="显示 / 隐藏可攀爬墙底色">底色</button>' : '') +
+        '" type="button" id="rm-climb-toggle" title="显示 / 隐藏背景结构底色">底色</button>' : '') +
       '<span class="rm-hint">滚轮缩放 · 按住拖动 · 双击复位</span>';
 
     var climbBtn = $('rm-climb-toggle');
@@ -8997,6 +9513,74 @@ function parseSave(raw, onProgress){
       rmMarks.climb.forEach(function(p){ ctx.fillRect(p[0], p[1], 1.02, 1.02); });
     }
 
+    /* 特效层（W4-fx）：水 / 酸 / 沙 / 腐化。坐标与地形同为「tile、y 向下」，
+       所以直接按格填，不需要任何换算。
+       水只铺在**空气格**上（岩壁是画布底色，铺上去会盖住地形），
+       沙从沙面往下铺满（沙本来就该埋住地面），腐化按圆画。 */
+    var fx = rmData && rmData.fx;
+    if (fx){
+      var fxc = function(k, d){
+        return (cs.getPropertyValue('--rm-' + k) || '').trim() || d;
+      };
+      var waterC = fxc('water', '#3f86c4'), acidC = fxc('acid', '#8fc63d');
+      var sandC = fxc('sand', '#d8bf86'), corrC = fxc('corrupt', '#9a4fc4');
+      var fxW = fx.w || rmData.w, fxH = fx.h || rmData.h;
+
+      /* 沙：沙面折线 + 两个底角 = 一块面。**铺满整个宽度**（沙把地面和岩壁一起埋住），
+         所以不能只填空气格——那样岩石会从沙里透出来，跟地图那边不一致。 */
+      if (fx.sand && fx.sand.length >= 2){
+        var ptd = fx.sand;
+        ctx.fillStyle = sandC;
+        ctx.globalAlpha = 0.92;
+        ctx.beginPath();
+        ctx.moveTo(ptd[0][0], ptd[0][1]);
+        for (var qi = 1; qi < ptd.length; qi++) ctx.lineTo(ptd[qi][0], ptd[qi][1]);
+        ctx.lineTo(ptd[ptd.length - 1][0], fxH);
+        ctx.lineTo(ptd[0][0], fxH);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
+      /* 水：整幅水域（含涨落带）逐行铺在空气格上；洞（AirPocket / WaterCutoff）跳过 */
+      if (fx.water){
+        var fw = fx.water, holes = fw.holes || [];
+        var paint = function(r0, r1, alpha){
+          ctx.fillStyle = fw.acid ? acidC : waterC;
+          ctx.globalAlpha = alpha;
+          rmRuns.air.forEach(function(r){
+            var y = r.y;
+            if (y + 0.5 < r0 || y + 0.5 > r1) return;
+            for (var x = r.x; x < r.x + r.n; x++){
+              var blocked = false;
+              for (var i = 0; i < holes.length; i++){
+                var hh = holes[i];
+                if (x + 0.5 >= hh[0] && x + 0.5 <= hh[2] &&
+                    y + 0.5 >= hh[1] && y + 0.5 <= hh[3]){ blocked = true; break; }
+              }
+              if (!blocked) ctx.fillRect(x, y, 1.02, 1.02);
+            }
+          });
+          ctx.globalAlpha = 1;
+        };
+        if (fw.band && fw.band[1] - fw.band[0] > 0.35) paint(fw.band[0], fw.band[1], 0.45);
+        if (fw.full && fw.full[1] - fw.full[0] > 0.02) paint(fw.full[0], fw.full[1], 0.88);
+      }
+
+      /* 腐化：圆斑（压在地形上，岩壁也算——它本来就长在墙上） */
+      if (fx.corrupt && fx.corrupt.length){
+        ctx.fillStyle = corrC;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        fx.corrupt.forEach(function(c){
+          ctx.moveTo(c[0] + c[2], c[1]);
+          ctx.arc(c[0], c[1], c[2], 0, Math.PI * 2);
+        });
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
     /* 实机图压在矢量层上：位图自带天空填色、是不透明的，盖住就完事。
        尺寸就是 w×h tile（1 px = 1 tile 再乘密度），在 tile 空间里正好铺满
        0..w / 0..h，所以一个坐标换算都不用做，缩放平移自动跟随。
@@ -9264,7 +9848,7 @@ function parseSave(raw, onProgress){
       b.addEventListener('click', function(){
         setRoomMark(rmCode, rmRoom, parseInt(b.getAttribute('data-rmmark'), 10));
         gxRoomMarkUI();
-        if (document.getElementById('map-stage')) openMap(rmCode);
+        if (document.getElementById('geo-stage')) openMap(rmCode);
       });
     });
 
@@ -9302,7 +9886,7 @@ function parseSave(raw, onProgress){
       gxRoomMarkUI();
       toast((!on ? '已标记为 ' : '已恢复 ') + rmRoom + (!on ? ' 不可达' : ''));
       recompute();
-      if (document.getElementById('map-stage')) openMap(rmCode);
+      if (document.getElementById('geo-stage')) openMap(rmCode);
     });
 
     cv.addEventListener('wheel', function(ev){
@@ -9447,10 +10031,13 @@ function parseSave(raw, onProgress){
         }
         if (cfg.ui.graph && typeof cfg.ui.graph === 'object') state.graphOpts = cfg.ui.graph;
         if (cfg.ui.roomMarks && typeof cfg.ui.roomMarks === 'object') state.roomMarks = cfg.ui.roomMarks;
+        if (cfg.ui.regmapColors && typeof cfg.ui.regmapColors === 'object') state.regmapColors = cfg.ui.regmapColors;
+        if (cfg.ui.regmapCurve && typeof cfg.ui.regmapCurve === 'object') state.regmapCurve = cfg.ui.regmapCurve;
+        if (typeof cfg.ui.regmapEngine === 'string') state.regmapEngine = cfg.ui.regmapEngine;
+        if (cfg.ui.regmapAnno && typeof cfg.ui.regmapAnno === 'object') state.regmapAnno = cfg.ui.regmapAnno;
         if (cfg.ui.roomExcluded && typeof cfg.ui.roomExcluded === 'object') state.roomExcluded = cfg.ui.roomExcluded;
         if (typeof cfg.ui.roomStrict === 'boolean') state.roomStrict = cfg.ui.roomStrict;
         if (typeof cfg.ui.roomCardFull === 'boolean') state.roomCardFull = cfg.ui.roomCardFull;
-        if (typeof cfg.ui.mapBase === 'boolean') state.mapBase = cfg.ui.mapBase;
         if (cfg.ui.roomCardStyle === 'live' || cfg.ui.roomCardStyle === 'vector'){
           state.roomCardStyle = cfg.ui.roomCardStyle;
         }
@@ -9569,31 +10156,69 @@ function parseSave(raw, onProgress){
     openRoom: function(code, room){ openRoomCard(code, room); return true; },
     openGraph: function(code, room){ openGraph(code, room || ''); return true; },
     openWorld: function(){ openWorldGraph(); return true; },
-    marks: function(){ return state.roomMarks || {}; },
-    /* 底图层（P0）读数：供 check_map 断言，避免靠 DOM 文本猜状态 */
-    mapBase: function(){
-      var el = document.getElementById('map-base');
-      return {
-        enabled: !!state.mapBase,
-        on: !!(el && el.classList.contains('on')),
-        hasHref: !!(el && el.getAttribute('href')),
-        url: el ? String(el.getAttribute('href') || '').slice(0, 22) : '',
-        w: el ? (+el.getAttribute('width') || 0) : 0,
-        h: el ? (+el.getAttribute('height') || 0) : 0,
-        cached: Object.keys(window.__rwMapBase || {}).length
-      };
-    },
-    setMapBase: function(on){
-      state.mapBase = !!on;
-      var b = document.getElementById('map-base-btn');
-      if (b) b.classList.toggle('on', state.mapBase);
-      var el = document.getElementById('map-base');
-      if (el){
-        if (!state.mapBase) el.classList.remove('on');
-        else if (el.getAttribute('href')) el.classList.add('on');
-      }
+    /* 几何地图（S4 起可带连线参数）：给回归脚本一个稳定入口，别去点一串按钮 */
+    geo: function(code, tune){
+      if (tune) state.regmapCurve = tune;
+      openMapGeo(String(code || '').toUpperCase());
       return true;
     },
+    geoState: function(){
+      var stage = document.getElementById('geo-stage');
+      if (!stage) return { open: false };
+      return {
+        open: true,
+        svg: !!stage.querySelector('svg'),
+        rooms: stage.querySelectorAll('.rm').length,
+        seen: stage.querySelectorAll('.rm.seen').length,
+        links: stage.querySelectorAll('.ln').length,
+        inner: stage.querySelectorAll('.ln.in').length,
+        bars: stage.querySelectorAll('.rm path[style*="--rg-b"],.rm path[style*="--rg-p"]').length,
+        solids: stage.querySelectorAll('.rm path[style*="--rg-solid"]').length,
+        annos: stage.querySelectorAll('.an-lb').length,
+        subs: stage.querySelectorAll('.an-sub').length,
+        subLabels: stage.querySelectorAll('.an-lb').length,
+        pct: (document.getElementById('geo-pct') || {}).textContent || '',
+        meta: (document.getElementById('geo-meta') || {}).textContent || '',
+        panel: !(document.getElementById('geo-pal-pop') || {}).hidden,
+        sliders: document.querySelectorAll('#geo-curve input[type=range]').length,
+        engine: (document.getElementById('gc-engine') || {}).value || '',
+        curve: curveOf()
+      };
+    },
+    /* W4：改标注开关并重画（等价于点勾选框），返回重画后的状态 */
+    geoAnno: function(key, on){
+      if (!state.regmapAnno) state.regmapAnno = {};
+      state.regmapAnno[key] = on ? 1 : 0;
+      saveAnno();
+      if (window.__rwGeoReload) window.__rwGeoReload();
+      return true;
+    },
+    /* 改一个连线参数并重画，等价于拖滑杆（等 change 事件那条路径） */
+    geoSet: function(key, value){
+      if (!state.regmapCurve) state.regmapCurve = {};
+      state.regmapCurve[key] = value;
+      var el = document.getElementById('gc-' + key);
+      if (el){
+        el.value = value;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      } else if (window.__rwGeoReload) window.__rwGeoReload();
+      return true;
+    },
+    geoPanel: function(on){
+      var pop = document.getElementById('geo-pal-pop');
+      if (pop) pop.hidden = (on === false);
+      return !!(pop && !pop.hidden);
+    },
+    /* W5：拓扑图导出（异步，结果写进 window.__rwExportGraph） */
+    exportGraph: function(scale, sample){
+      window.__rwExportGraph = { pending: true };
+      gxExportPng(scale || 3, { download: false, sample: !!sample, done: function(info){
+        delete info.blob;
+        window.__rwExportGraph = info;
+      }});
+      return true;
+    },
+    marks: function(){ return state.roomMarks || {}; },
     setMark: function(code, room, v){ setRoomMark(code, room, v); return true; },
     exclude: function(code, room, on){
       setRoomExcluded((currentCampaign() || {}).slugcat, code, room, on !== false);
@@ -9896,7 +10521,7 @@ function parseSave(raw, onProgress){
       }
       var air = rgb(cs.getPropertyValue('--rm-air'));
       if (!air) return { ready: false };
-      /* 可攀爬墙的格子底色被换过，且可能是管道/十字所在的格子，采样时跳过 */
+      /* 背景结构的格子底色被换过，且可能是管道/十字所在的格子，采样时跳过 */
       var skip = {};
       if (rmMarks){
         (rmMarks.climb || []).forEach(function(p){ skip[p[0] + ',' + p[1]] = 1; });

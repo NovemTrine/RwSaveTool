@@ -27,6 +27,7 @@ import json
 import os
 import shutil
 import threading
+import time
 
 from . import paths
 
@@ -271,11 +272,17 @@ def purge_region(code: str) -> int:
         return 0
     if not os.path.isdir(target):
         return 0
-    try:
-        shutil.rmtree(target)
-        return 1
-    except OSError:
-        return 0
+    # Windows 上后台预取可能正好在写某个文件，rmtree 会因句柄占用失败（目录留下半截）。
+    # 这种占用是瞬时的，重试几次就干净了；真拿不掉再放弃（下一次删除/清理还会再试）。
+    for attempt in range(3):
+        try:
+            shutil.rmtree(target)
+            return 1
+        except OSError:
+            if attempt == 2:
+                return 0
+            time.sleep(0.08)
+    return 0
 
 
 def clear_all() -> dict:

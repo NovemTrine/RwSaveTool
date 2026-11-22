@@ -126,7 +126,7 @@ def write_docs() -> int:
         "内置区域      %d 个，来自游戏本体三个包：" % len(regions),
         "              游戏原版 / Downpour（倾盆大雨）/ The Watcher（观望者）",
         "模组数据      不含。使用者在程序里自行导入创意工坊模组后生成",
-        "地图底图      不含。导入游戏本体后底图自动可用",
+        "地图底图      不含（区域地图是几何图，靠房间数据现算，不需要 map_<reg>.png）",
         "个人数据      不含。无配置、无存档内容、无导入缓存、无本机路径",
         "              区域数据里记录的素材路径已统一抹除（换机器后按提示重新导入即可）",
         "",
@@ -149,9 +149,12 @@ def write_docs() -> int:
         "%APPDATA%\\RwSaveTool\\ 下，不影响使用。",
         "",
         "【本版要点】",
-        "· 房间卡新增「矢量 / 实机」切换：按游戏自带的着色算法还原整间房的相貌（地形/天空/水/道具）",
-        "· 高分屏按设备像素取密度；放大停下后自动补 20 px/tile 的视口裁块，放大不再糊",
-        "· 水面统一成一种画法（不再出现色块）；区域数据页新增渲染缓存的占用与一键清理",
+        "· 区域地图改成几何图：按房间地形与门的连通关系现算整区布局（方块图与切层按钮下线）",
+        "  右侧房间清单与图上房间严格一致；没有地形文件的房间单独成栏，不再出现「点了没反应」",
+        "· 地图配色从区域调色板提取；杆子转角能拐弯，放大后不再出现假十字（高清层修正）",
+        "· 标注收敛为「子区域色 + 子区域名」，房间类型 / 物件 / 业力门三类图标移除",
+        "· 新增导出：区域地图 SVG / 2× PNG、拓扑图高清 PNG；导出走系统「另存为」，",
+        "  完成后右下角写明完整保存路径，可一键打开所在文件夹",
         "",
     ]
     with io.open(os.path.join(PKG, "VERSION.txt"), "w", encoding="utf-8", newline="\r\n") as fh:
@@ -186,8 +189,11 @@ def main() -> int:
         "_internal/data/creature_score.json",
         "region_data/_sources.json",
     ]
-    region_files = sorted(n for n, _s in files if n.startswith("region_data/") and n.endswith(".json")
-                          and not n.endswith("_sources.json"))
+    # 只数真正的区域文件：`_sources.json` / `_colors.json` 这类下划线开头的是元数据与缓存，
+    # 数进来就会变成「118 个官方区域」，跟 README 里的 {regions} 对不上（v1.3.0 踩过）。
+    region_files = sorted(n for n, _s in files
+                          if n.startswith("region_data/") and n.endswith(".json")
+                          and not n.split("/")[-1].startswith("_"))
 
     lines = []
     lines.append("RwSaveTool v%s · 校验清单" % VERSION)
