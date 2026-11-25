@@ -220,12 +220,19 @@ def _push_out(box, others, gap, skip, limit=120):
 
 
 def align_pass(boxes, pairs, gap, order):
-    """① 对齐：把新框摆到「两扇门相距 gap」的位置，再顶开已放置的框。"""
-    done = set()
+    """① 对齐：把新框摆到「两扇门相距 gap」的位置，再顶开已放置的框。
+
+    ⚠️ `done` **必须是 list，不能是 set**（V1.24 修）：`Box` 没有 `__hash__`，
+    集合的迭代顺序按对象 `id()`（内存地址）排，每次重算地址都不同 → `_push_out()`
+    顶开「已放置框」的顺序跟着变 → 同一份数据两次布局差 10~80 单位。
+    实测（SL 96 间）：set 版连续三次 96/96 间坐标不同；list 版三次**逐位相同**。
+    顺序语义没变（还是放置先后），只是把它固定下来。
+    """
+    done = []
     for (end, box) in order:
         if end is None:
             box.x = box.y = 0.0
-            done.add(box)
+            done.append(box)
             continue
         pa = end["box"].door(end)
         n = NORMAL[end["side"]]
@@ -233,7 +240,7 @@ def align_pass(boxes, pairs, gap, order):
         box.x = pa[0] + n[0] * gap - off[0]
         box.y = pa[1] + n[1] * gap - off[1]
         _push_out(box, list(done), gap, skip=set())
-        done.add(box)
+        done.append(box)
     return
 
 
@@ -430,7 +437,6 @@ def _pair_dir(ev_a, ev_b):
 def build(rooms, opts=None):
     o = dict(config.defaults())
     o.update(opts or {})
-    rooms = [r for r in rooms if not is_gate(r.name)]
     if not rooms:
         return {"nodes": [], "edges": [], "stats": {"rooms": 0, "engine": "zq"}}
 
@@ -467,8 +473,14 @@ def build(rooms, opts=None):
             else:
                 one_side += 1
                 ev_b = {"side": OPP[ev_a["side"]], "t": 1.0 - ev_a["t"]}
-            ea = {"box": a, "side": ev_a["side"], "t": ev_a["t"]}
-            eb = {"box": b, "side": ev_b["side"], "t": ev_b["t"]}
+            ea = {"box": a, "side": ev_a["side"], "t": ev_a["t"],
+                  "cell": (ex[0], ex[1]),
+                  "port": doorrule.port_cell(r, ex[0], ex[1])}
+            eb = {"box": b, "side": ev_b["side"], "t": ev_b["t"],
+                  "cell": None, "port": None}
+            if back:
+                eb["cell"] = (back[0][0], back[0][1])
+                eb["port"] = doorrule.port_cell(rb, back[0][0], back[0][1])
             # 方位弱约束（V1.15）：**只用两端门位合成**，不再读 map_image / 世界坐标。
             # `ea["side"]` 就是"a 的门开在哪面墙"，也就等于"b 在 a 的哪一侧"；
             # 两端不一致时取更贴边（`t` 更小）的那一侧。见 force_pass 里那一项。
@@ -545,6 +557,7 @@ def build(rooms, opts=None):
             "room": r,
             "isolated": not b.ends,
             "sub": r.sub,
+            "gate": is_gate(r.name),      # 大门（V1.24）：渲染样式与房间不同
         })
 
     edges = []
@@ -566,6 +579,10 @@ def build(rooms, opts=None):
             "disagree": False,
             "side_a": ea["side"], "side_b": eb["side"],
             "ta": ea["t"], "tb": eb["t"],
+            # V1.25 №15：门端自己的出口格与「管道口」格（源格坐标，不是布局单位）。
+            # 渲染侧拿它把门点画在 E 上；缺一个就退回 `pa/pb`（框边界）。
+            "e_a": list(ea["port"]) if ea.get("port") else None,
+            "e_b": list(eb["port"]) if eb.get("port") else None,
             "door_a": ea["side"], "door_b": eb["side"],
             "map_a": None, "map_b": None,
             "src_a": "door", "src_b": "door",

@@ -35,23 +35,47 @@ from __future__ import annotations
 import colorsys
 import json
 import os
+import re
 import struct
 import zlib
 from collections import Counter, OrderedDict
 
 # 亮度阈值：低于这个值的格子是"暗部/虚空"，会把色相污染成紫
 LUM_FLOOR = 40.0
-TARGET_L = 0.62
-SAT_MIN = 0.18
+# 目标明度（V1.24 №4 定案：0.62 → 0.55）。
+# 0.55 是唯一让「黑岩壁 / 白管道」两侧 WCAG 对比度都 > 4 的一档：
+#   L0.50 → 白 5.33:1 / 黑 3.94:1（岩壁与地面开始分不开）
+#   L0.55 → 白 4.38:1 / 黑 4.79:1   ← 取这档
+#   L0.62 → 白 3.33:1（白管道发飘）/ 黑 6.31:1
+TARGET_L = 0.55
 SAT_MAX = 0.45
+# 取样行：调色板是 32 列 × 16 行的「材质 × 光照」矩阵，`row0` 在 PNG 底部。
+# `row12` 才是"材质本体"那一档；旧规则用的 `row7` 在多数区是暗部/中性灰
+# （实测 SL 那行最亮两格是 `#68696A`，S=0.01 → 色相纯属噪声）。
+SAMPLE_ROW = 12
+SAMPLE_SPAN = 12          # 只取前 12 列（与旧口径的列范围一致，避开 30/31 的白色占位）
 
-# 背景结构：主人 `corlor.py` 的默认参数
-STRUCT_V = 0.65
-STRUCT_S = 0.60
+# 背景结构（`c`）相对「可通行」（`air`）的派生比例：HSV 下 `V*ratio`、`S*sat`。
+#
+# 参数来历（V1.24 №1，主人给的参考色对）：
+#   水 `#4C93DD`（H210.6 S0.656 V0.867）→ c `#4074AC`（H211.1 S0.628 V0.675）
+#   ⇒ V ratio = 0.675/0.867 = **0.778**、S ratio = 0.628/0.656 = **0.957**，色相不动。
+# 旧值 0.65 / 0.60 是把结构压成"比水暗一大截的灰块"——地图上看就是水被灰块切断。
+#
+# 中途试过 0.68（V1.24 №9），但那是**整体压暗**：主人要的是"水下的结构更深"，
+# 而水下那一层根本不是靠 `c` 的明度决定的——水是半透明盖在 `c` 上面，
+# α 越高 `c` 的权重越低（α=0.88 时只剩 12%，水下「空气 vs 结构」ΔE 只有 1.4，几乎看不见）。
+# 所以 0.78 保留（干区观感按原样），**水下深度交给水的 α**（见 `svg._fx_water`：0.88 → 0.62）。
+STRUCT_V = 0.78
+STRUCT_S = 0.96
 
 # 取色算法版本：改取样规则 / 夹值 / 派生参数时**必须**加一，否则 `_colors.json`
 # 里的旧值会被当成命中（实测：改了子区域 hash 参数后 SVG 里还混着旧色）。
-CACHE_VERSION = 3
+# 4 = V1.24 №4（取样 row7 最亮 → row12 按饱和度；TARGET_L 0.62 → 0.55；去掉 SAT_MIN）。
+# 5 = V1.24 №1（背景结构 0.65/0.60 → 0.78/0.96）。
+# 6 = V1.24 №9（背景结构 V 0.78 → 0.68）。
+# 7 = V1.24 №11（背景结构**回到 0.78**，水下深度改用水的 α；旧缓存里存的是 0.68 的暗色，必须作废）。
+CACHE_VERSION = 7
 
 CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "region_data", "_colors.json")
@@ -254,8 +278,14 @@ def _row(pal, row: int):
 def sample_palette(number: int, root):
     """→ `(hex, H, S, src)`；拿不到就 `None`。
 
-    `row7` 里挑**亮度 ≥ 40 的最亮 2 格**取均值；一格都不够亮时退到 `row5`；
-    再不行用 `row7` 全部（全黑调色板 → 中性灰，属正常回退）。
+    **V1.24（№4）定案**：`row12`（材质本体档）前 12 列里**按饱和度降序取前 2 格**求均值。
+
+    为什么不再用 `row7` 的"最亮 2 格"：实测 `row7` 在多数区是暗部/中性灰，最亮那两格
+    几乎无彩（SL `#68696A` S=0.01、SU S=0.07），色相完全是噪声；旧代码再用
+    `SAT_MIN=0.18` 强行提饱和，结果 SL/GW/SU/HI 被拉成同一个蓝灰（`#8x9xB0`）。
+
+    回退链：够亮（`≥ LUM_FLOOR`）的格 → `row12` 全部非纯黑格 → `row5` 前 8 列
+    → 中性灰（全黑调色板，属正常回退）。
     """
     pal = None
     for r in (root if isinstance(root, (list, tuple)) else [root]):
@@ -265,22 +295,26 @@ def sample_palette(number: int, root):
     if not pal:
         return None
     w = pal[0]
-    row7 = _row(pal, 7)[:max(8, min(w, 12))]
-    src = "row7"
-    picked = sorted([c for c in row7 if _lum(c) >= LUM_FLOOR],
-                    key=_lum, reverse=True)[:2]
+    row = _row(pal, SAMPLE_ROW)[:max(8, min(w, SAMPLE_SPAN))]
+    src = "row%d" % SAMPLE_ROW
+    picked = [c for c in row if _lum(c) >= LUM_FLOOR]
+    if not picked:
+        picked = [c for c in row if _lum(c) > 0]
+        src = "row%d-dark" % SAMPLE_ROW
     if not picked:
         row5 = _row(pal, 5)[:8]
-        picked = [c for c in row5 if _lum(c) >= LUM_FLOOR][:2]
+        picked = [c for c in row5 if _lum(c) >= LUM_FLOOR] or \
+                 [c for c in row5 if _lum(c) > 0]
         src = "row5"
     if not picked:
-        picked = [c for c in row7 if _lum(c) > 0][:2]
-        src = "row7-dark"
-    if not picked:
         return ("#8C8C8C", 0.0, 0.0, "empty")
+    # 按饱和度降序（同样饱和时把更亮的放前面，避免两个格都取到几乎同色）
+    picked.sort(key=lambda c: (colorsys.rgb_to_hls(
+        c[0] / 255.0, c[1] / 255.0, c[2] / 255.0)[2], _lum(c)), reverse=True)
+    picked = picked[:2]
     m = [sum(c[i] for c in picked) / float(len(picked)) for i in range(3)]
     h, _l, s = colorsys.rgb_to_hls(m[0] / 255.0, m[1] / 255.0, m[2] / 255.0)
-    return (hls_hex(h, TARGET_L, min(SAT_MAX, max(SAT_MIN, s))), h * 360.0, s, src)
+    return (hls_hex(h, TARGET_L, min(SAT_MAX, s)), h * 360.0, s, src)
 
 
 def hls_hex(h: float, l: float, s: float) -> str:
@@ -298,6 +332,85 @@ def struct_color(hex_color: str, ratio: float = STRUCT_V, sat: float = STRUCT_S)
     rr, gg, bb = colorsys.hsv_to_rgb(h, sat1, v)
     # 与 `corlor.py` 逐位一致：那边是 `int(x * 255)`（截断），四舍五入会差 1–3 个色阶
     return "#%02X%02X%02X" % (int(rr * 255), int(gg * 255), int(bb * 255))
+
+
+_HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+def _hex_hue(hex_color: str) -> float:
+    """`#RRGGBB` → 色相（0–360）。只给 `groups[].hue` 记账用。"""
+    return round(colorsys.rgb_to_hls(
+        *[int(hex_color[i:i + 2], 16) / 255.0 for i in (1, 3, 5)])[0] * 360.0, 1)
+
+
+def norm_override(ov) -> dict:
+    """把「背景取色」的三种历史形态归一成 `{子区域名: '#RRGGBB'}`。
+
+    - `None` / `""` → `{}`
+    - `"#RRGGBB"`（rev.1 只支持主体）→ `{"": "#RRGGBB"}`，老配置不用手改
+    - `{子区域名: '#RRGGBB'}` → 逐项校验，非法值直接丢（手改 config 也不该炸）
+
+    `""` 是**主体**（没有子区域的房间）那一组的键；其余键就是子区域名
+    （`Looks to the Moon` / `Filtration System` 这种，与 `groups[].sub` 同源）。
+    """
+    if not ov:
+        return {}
+    if isinstance(ov, str):
+        s = ov.strip()
+        return {"": s.upper()} if _HEX_RE.match(s) else {}
+    if not isinstance(ov, dict):
+        return {}
+    out = {}
+    for k, v in ov.items():
+        s = str(v or "").strip()
+        if _HEX_RE.match(s):
+            out[str(k or "")] = s.upper()
+    return out
+
+
+def with_override(pal: dict, override) -> dict:
+    """按区自定义「背景取色」（V1.24 №4）：**主体与每个子区域都能单独指定**。
+
+    主人定案：子区域颜色一般与主区域不同 → 不能只改主体，也不能"改主体就顺带全改"。
+    `override` 是 `{子区域名: '#RRGGBB'}`（`""` = 主体），只改传进来的那几组，
+    没传的保持派生色。`struct`（背景结构）跟着 `air` 重派生，不单独配
+    （§2.4b：结构是空气色的暗化派生，两者必须配对）。
+
+    不认识的子区域名**忽略不报错**：子区域集合会随模组/游戏版本变，写进配置的旧名字
+    可能已经不存在了；同理，`""` 那组万一缺失就补一个头组（极端情况兜底）。
+
+    `pal` 是 `cached()` 的返回值，**不改原对象**（它可能正躺在 `_colors.json` 缓存里）。
+    """
+    ov = norm_override(override)
+    if not isinstance(pal, dict) or not ov:
+        return pal
+    out = dict(pal)
+    groups = [dict(g) for g in (pal.get("groups") or [])]
+    hit = set()
+    for g in groups:
+        sub = str(g.get("sub") or "")
+        hex_color = ov.get(sub)
+        if not hex_color:
+            continue
+        g["air"] = hex_color
+        g["struct"] = struct_color(hex_color)
+        g["src"] = "override"
+        g["hue"] = _hex_hue(hex_color)
+        hit.add(sub)
+    if "" in ov and "" not in hit:
+        groups.insert(0, {"sub": "", "air": ov[""], "struct": struct_color(ov[""]),
+                          "palette": pal.get("palette"), "src": "override",
+                          "hue": _hex_hue(ov[""])})
+        hit.add("")
+    if not hit:
+        return pal                                # 全是已经不存在的子区域名
+    out["groups"] = groups
+    # 顶层 `air/struct` 永远取"主体"那一组（`groups[0]` 正常就是它，但别假设顺序）
+    head = next((g for g in groups if not g.get("sub")), groups[0])
+    out["air"] = head.get("air")
+    out["struct"] = head.get("struct")
+    out["src"] = "override"
+    return out
 
 
 def hue_gap(a: float, b: float) -> float:

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import sys
 
@@ -42,6 +43,25 @@ from core import paths  # noqa: E402
 paths.data_dir = lambda: os.path.join(DIST, "region_data")
 
 from core.bridge import Api  # noqa: E402
+
+
+def karma_ok() -> tuple[bool, str]:
+    """№8：业力门槛必须**在包里**（来源是游戏目录的 `locks.txt`，发布后读不到）。
+
+    只查一条已知真值：`SU` 的 `GATE_SU_DS` = 左 4 / 右 2（与 `locks.txt` 第 1 行一致）。
+    """
+    path = os.path.join(DIST, "region_data", "SU.json")
+    try:
+        with io.open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError) as exc:
+        return False, "读不到 SU.json：%s" % exc
+    for layer in data.get("layers") or []:
+        for room in layer.get("rooms") or []:
+            if str(room.get("name") or "").upper() == "GATE_SU_DS":
+                got = room.get("karma")
+                return list(got or []) == [4, 2], "GATE_SU_DS karma=%r" % (got,)
+    return False, "SU.json 里找不到 GATE_SU_DS"
 
 
 def main() -> int:
@@ -89,10 +109,13 @@ def main() -> int:
         print("ERROR:", result["error"])
         return 1
 
+    karma_good, karma_note = karma_ok()
+    print("%-13s %s" % ("gateKarma:", karma_note))
     ok = (
         result.get("bridge") is True
         and result.get("version") == VERSION
         and result.get("regionCount") == EXPECT_REGIONS
+        and karma_good
     )
     print("期望版本 %s / 期望区域 %d" % (VERSION, EXPECT_REGIONS))
     print("RELEASE VERIFY", "OK" if ok else "FAILED")

@@ -94,19 +94,23 @@ def _parse_room_file(path: str) -> tuple[int, int, list, str, dict]:
     return out
 
 
-def load_rooms(code: str, slugcat: str = "") -> dict:
-    """装配一个区域的房间全集（多层合并 / 变体替换 / 战役 / 出口并集都在 `model` 里）。"""
+def load_rooms(code: str, slugcat: str = "", filters: dict | None = None) -> dict:
+    """装配一个区域的房间全集（多层合并 / 变体替换 / 战役 / 出口并集都在 `model` 里）。
+
+    `filters` 是 №6/№7 的筛选口径（来源 / 角色 / 严格 / 手工剔除），`None` = 不筛。
+    它由 `bridge` 按配置算好塞进 `opts["flt"]`，这里只负责转手。
+    """
     path = region_path(code)
     if not os.path.isfile(path):
         raise FileNotFoundError("该区域没有导入数据：%s" % str(code).upper())
     return model.load_region(path, None, campaign=(slugcat or None),
-                             parser=_parse_room_file)
+                             parser=_parse_room_file, filters=filters)
 
 
-def probe(code: str, slugcat: str = "") -> dict:
+def probe(code: str, slugcat: str = "", filters: dict | None = None) -> dict:
     """能不能排布：房间数、缺 txt 数、无地图矩形数、可用战役。"""
     try:
-        region = load_rooms(code, slugcat)
+        region = load_rooms(code, slugcat, filters)
     except FileNotFoundError as exc:
         return {"ok": False, "error": "no_region", "detail": str(exc)}
     except Exception as exc:                       # noqa: BLE001 - 桥接层不抛
@@ -122,6 +126,8 @@ def probe(code: str, slugcat: str = "") -> dict:
         "ok": bool(rooms),
         "error": "" if rooms else "no_rooms",
         "rooms": len(rooms),
+        "rooms_total": region.get("rooms_total") or len(rooms),
+        "dropped": region.get("dropped") or {},
         "missing": len(region.get("missing") or []),
         "no_map_rooms": no_map,
         "campaigns": campaigns,
@@ -130,8 +136,14 @@ def probe(code: str, slugcat: str = "") -> dict:
 
 
 def build(code: str, slugcat: str = "", opts: dict | None = None, prepare: bool = True) -> dict:
-    """跑一遍布局，返回纯数据（`nodes` / `edges` / `stats`）。"""
-    region = load_rooms(code, slugcat)
+    """跑一遍布局，返回纯数据（`nodes` / `edges` / `stats`）。
+
+    `opts["flt"]`（筛选口径）在这里**摘掉**：它只影响装哪批房间，不属于布局参数，
+    留着会污染 `result["params"]` 的回显（前端/回归脚本会把它当成可调项）。
+    """
+    o = dict(opts or {})
+    flt = o.pop("flt", None)
+    region = load_rooms(code, slugcat, flt if isinstance(flt, dict) else None)
     p = config.defaults()
-    p.update(opts or {})
+    p.update(o)
     return build_rooms(region["rooms"], opts=p, region=region, code=code, prepare=prepare)

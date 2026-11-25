@@ -283,7 +283,13 @@ def main() -> int:
                 "(function(){var c=document.querySelector('.ov-cell[data-map]');if(!c) return null;"
                 "var code=c.getAttribute('data-map'); c.click(); return code;})()"
             )
-            time.sleep(4.2)          # 几何图是现算的（冷启动 3 s 上下）
+            # 几何图是现算的：冷启动 3 s 上下，大区加上门节点会到 5–7 s。
+            # 死等 4.2 s 会抢跑（读到还没渲染的 SVG），改成轮询 `.rm` 出现。
+            for _ in range(40):
+                time.sleep(0.5)
+                if js("document.querySelectorAll('#geo-stage .rm[data-room]').length > 0"):
+                    break
+            time.sleep(0.8)
             out["ovModal"] = loads(js(
                 "JSON.stringify((function(){"
                 "var st=document.getElementById('geo-stage');"
@@ -304,7 +310,12 @@ def main() -> int:
                 "(function(){var b=document.querySelector('[data-map=\"GW\"]')||document.querySelector('[data-map]');"
                 "if(!b) return null; var code=b.getAttribute('data-map'); b.click(); return code;})()"
             )
-            time.sleep(4.2)
+            for _ in range(40):
+                time.sleep(0.5)
+                if js("document.querySelectorAll('#geo-stage .rm[data-room]').length > 0"
+                      " && document.querySelectorAll('#mu-body .mu-chip').length > 0"):
+                    break
+            time.sleep(0.8)
 
             out["modal"] = loads(js(
                 "JSON.stringify((function(){"
@@ -343,19 +354,43 @@ def main() -> int:
             out["muAll"] = loads(js(
                 "JSON.stringify((function(){"
                 "document.querySelector('[data-mu=\"all\"]').click();"
-                "return {chips:document.querySelectorAll('#mu-body .mu-chip[data-focus]').length,"
+                "return {chips:document.querySelectorAll("
+                "  '#mu-body .mu-chip[data-focus]:not([data-focus^=\"GATE_\"])').length,"
+                "gateChips:document.querySelectorAll('#mu-body .mu-chip[data-focus^=\"GATE_\"]').length,"
                 "nofile:document.querySelectorAll('#mu-body .mu-chip[data-nofile]').length,"
-                "rooms:document.querySelectorAll('#geo-stage .rm[data-room]').length,"
+                "rooms:document.querySelectorAll('#geo-stage .rm[data-room]:not(.gate)').length,"
+                "gates:document.querySelectorAll('#geo-stage .rm.gate').length,"
+                "frames:document.querySelectorAll('#geo-stage .rm.gate .gt').length,"
                 "split:document.querySelectorAll('#mu-body .mu-split').length,"
+                "meta:(document.getElementById('geo-meta')||{}).textContent||'',"
                 "on:document.querySelector('[data-mu].on').getAttribute('data-mu')};})())"
             ))
             ma = out["muAll"] or {}
-            check("「全部」标签的清单条数 = 几何图上的房间数（分母以图为真值）",
+            check("「全部」标签的清单条数 = 几何图上的房间数（分母以图为真值；门不占这一栏）",
                   ma.get("chips") == ma.get("rooms") and (ma.get("rooms") or 0) > 0,
                   f"chips={ma.get('chips')} rooms={ma.get('rooms')}")
+            check("大门画进图上：每个 `.rm.gate` 都有虚线圈（`.gt`），清单里有对应条",
+                  (ma.get("gates") or 0) > 0 and ma.get("frames") == ma.get("gates")
+                  and ma.get("gateChips") == ma.get("gates"),
+                  f"gates={ma.get('gates')} frames={ma.get('frames')} chips={ma.get('gateChips')}")
+            check("标题里大门单独计数（不混进「N 间」）",
+                  "大门" in (ma.get("meta") or "") and "座" in (ma.get("meta") or ""),
+                  str(ma.get("meta")))
             check("清单有、图上没有的房间单独成栏（有就显示分隔）",
-                  (ma.get("nofile") or 0) == 0 or ma.get("split") == 1,
+                  (ma.get("nofile") or 0) == 0 or (ma.get("split") or 0) >= 1,
                   f"nofile={ma.get('nofile')} split={ma.get('split')}")
+            # 标题（`.rm` 里数）与右栏统计（清单口径）必须是同一个分数；
+            # 之前把「已探索的门」算进了标题分子，两处差 3 间（V1.24 修）。
+            out["seenSync"] = loads(js(
+                "JSON.stringify((function(){"
+                "var num=function(t){var m=t.match(/已探索 (\\d+)\\s*\\/\\s*(\\d+)/);"
+                "return m?m[1]+'/'+m[2]:'';};"
+                "return {meta:num((document.getElementById('geo-meta')||{}).textContent||''),"
+                "stat:num((document.getElementById('map-stat')||{}).textContent||'')};})())"
+            )) or {}
+            ss = out["seenSync"]
+            check("标题与右栏统计的「已探索」是同一个分数（门不算分子也不算分母）",
+                  bool(ss.get("meta")) and ss.get("meta") == ss.get("stat"), str(ss))
 
             # ---- 三个标签与地图联动 ----
             out["muTabs"] = loads(js(
@@ -364,7 +399,7 @@ def main() -> int:
                 "Array.prototype.forEach.call(t,function(b){"
                 "  if(b.classList.contains('on')) r.on.push(b.getAttribute('data-mu'));"
                 "  r.counts[b.getAttribute('data-mu')]=parseInt(b.querySelector('b').textContent,10);});"
-                "r.seen=document.querySelectorAll('#geo-stage .rm.seen').length;"
+                "r.seen=document.querySelectorAll('#geo-stage .rm.seen:not(.gate)').length;"
                 "return r;})())"
             )) or {}
             tabs = out["muTabs"]
@@ -400,14 +435,15 @@ def main() -> int:
             )) or {}
             sw = out["muSeen"]
             check("「已探索」标签只列去过的房间，且都带标记",
-                  sw.get("chips") == tabs["counts"]["seen"] and sw.get("marked") == sw.get("chips"),
+                  sw.get("chips") == (tabs.get("counts") or {}).get("seen")
+                  and sw.get("marked") == sw.get("chips"),
                   str(sw))
             check("切标签把状态写到舞台（data-filter）", sw.get("filter") == "seen", str(sw))
             check("「已探索」标签下未探索的房间变暗",
                   sw.get("dimOpacity") is not None and sw.get("dimOpacity") < 0.3
                   and sw.get("seenOpacity") == 1, str(sw))
             check("切回「未探索」恢复原样",
-                  sw.get("unseen") == tabs["counts"]["unseen"]
+                  sw.get("unseen") == (tabs.get("counts") or {}).get("unseen")
                   and "已探索" in (sw.get("hint") or ""), str(sw.get("hint")))
 
             # ---- 点房间号：居中放大 + 高亮（房间卡会盖在上面，验完关掉） ----
@@ -434,6 +470,22 @@ def main() -> int:
                   and int((fc.get("pct") or "0%").rstrip("%")) > 100,
                   f"{fc.get('before')} → {fc.get('after')} pct={fc.get('pct')}")
             check("点房间号顺带打开房间卡（沿用旧约定）", fc.get("card"), str(fc.get("card")))
+
+            # ---- 点大门：同样能定位 + 开卡（门卡的副标题带业力门槛） ----
+            gate_name = js("(function(){"
+                           # 上一步把清单切到了「未探索」，大门只在「全部」那一栏里
+                           "document.querySelector('[data-mu=\"all\"]').click();"
+                           "var c=document.querySelector('#mu-body .mu-chip[data-focus^=\"GATE_\"]');"
+                           "if(!c) return ''; var n=c.getAttribute('data-focus'); c.click(); return n;})()")
+            time.sleep(1.2)
+            out["gateFocus"] = loads(js(
+                "JSON.stringify((function(){var r=(window.__rwTest&&window.__rwTest.roomCard)"
+                "?window.__rwTest.roomCard():{};return {name:%r, open:r.open, title:r.title,"
+                "sub:r.sub};})())" % (gate_name or "")))
+            gf = out["gateFocus"]
+            check("点大门条目能开房间卡（副标题带业力门槛）",
+                  bool(gate_name) and gf.get("open") and "业力门" in (gf.get("sub") or ""),
+                  str(gf)[:160])
 
             # ---- 缩放 / 平移：改 viewBox，不改 transform ----
             out["zoom"] = loads(js(
@@ -512,7 +564,12 @@ def main() -> int:
 
             # ---- 窄长条区域（CC 宽高比 0.4）：几何图照样铺满舞台 ----
             js("var b=document.querySelector('[data-map=\"CC\"]'); if(b) b.click();")
-            time.sleep(4.2)
+            # CC 也是大区（+ 门节点），冷算会过 4 s；死等会读到还没插进来的 <svg>
+            for _ in range(40):
+                time.sleep(0.5)
+                if js("!!document.querySelector('#geo-stage svg.geo-svg')"):
+                    break
+            time.sleep(0.8)
             out["narrow"] = loads(js(
                 "JSON.stringify((function(){var st=document.getElementById('geo-stage');"
                 "var svg=st&&st.querySelector('svg');"
@@ -526,6 +583,95 @@ def main() -> int:
             nr = out["narrow"]
             check("窄长区域也能画出房间", nr.get("open") and (nr.get("rooms") or 0) > 0, str(nr)[:140])
             check("几何图撑满舞台高度", nr.get("fillsH"), f"pct={nr.get('pct')}")
+
+            # ---- 背景取色：只改 CSS 变量，不重取 SVG、不重排（V1.24 修） ----
+            # 老行为：改一次背景色 → opts 变 → 布局缓存作废 → 重算 1–2 s → 整张 SVG
+            # 重新插入 DOM（看起来"地图重画了一遍，房间还换了位置"）。
+            # 现在：直接改房间 `<g>` 的 `--rg-air`，不发请求、不换 <svg>。
+            out["bgLive"] = loads(js(
+                "JSON.stringify((function(){"
+                "var st=document.getElementById('geo-stage');"
+                "var svg=st&&st.querySelector('svg'); if(!svg) return {err:'no svg'};"
+                "svg.__probe=1;"                                  # 打个记号，换过就没了
+                "var rm=[].slice.call(st.querySelectorAll('.rm[data-sub]'));"
+                "var main=rm.filter(function(e){return (e.getAttribute('data-sub')||'')==='';});"
+                "var sub=rm.filter(function(e){return (e.getAttribute('data-sub')||'')!=='';});"
+                "if(!main.length) return {err:'no main group'};"
+                "function air(e){return getComputedStyle(e).getPropertyValue('--rg-air').trim();}"
+                "var r=svg.querySelector('.rm rect');"
+                "var before={rect:r.getAttribute('x')+' '+r.getAttribute('y'),"
+                "  air:air(main[0]), sub:sub.length?air(sub[0]):''};"
+                "var inp=document.getElementById('gc-bg'); if(!inp) return {err:'no input'};"
+                "var want='#'+'2E7D6B';"
+                "inp.value=want;"
+                "inp.dispatchEvent(new Event('input',{bubbles:true}));"
+                "var r2=svg.querySelector('.rm rect');"
+                "var after={rect:r2.getAttribute('x')+' '+r2.getAttribute('y'),"
+                "  air:air(main[0]), sub:sub.length?air(sub[0]):''};"
+                "return {n:rm.length, subN:sub.length, want:want.toUpperCase(),"
+                "  before:before, after:after,"
+                "  sameSvg:svg.__probe===1 && st.querySelector('svg')===svg};})())"
+            )) or {}
+            bl = out["bgLive"]
+            check("改背景色当场生效（房间底色变了）",
+                  (bl.get("after", {}).get("air") or "").upper() == bl.get("want"),
+                  str(bl)[:150])
+            check("改背景色不重新取图（<svg> 还是同一份）",
+                  bl.get("sameSvg") is True, str(bl.get("err") or ""))
+            check("改背景色不改布局（首间房 rect 坐标不动）",
+                  bl.get("before", {}).get("rect") == bl.get("after", {}).get("rect"),
+                  "%s → %s" % (bl.get("before", {}).get("rect"),
+                               bl.get("after", {}).get("rect")))
+            check("改背景色不影响别的分组",
+                  (bl.get("before", {}).get("sub") or "") ==
+                  (bl.get("after", {}).get("sub") or ""),
+                  "%s → %s" % (bl.get("before", {}).get("sub"),
+                               bl.get("after", {}).get("sub")))
+            js("var b=document.getElementById('geo-bg-reset'); if(b) b.click();")
+
+            # ---- 配色预设：只剩「默认 / 经典」，且「默认」= 清掉本区自定义（V1.24 №9b） ----
+            # 原来的「还原」按钮删掉了；它和「默认」语义重叠，而旧「默认」会把 `c` 写成固定值、
+            # 反过来盖掉每个子区域派生的 `--rg-cg`。现在「默认」干的就是原来「还原」的事。
+            out["palPreset"] = loads(js(
+                "JSON.stringify((function(){"
+                "var pop=document.getElementById('geo-pal-pop'); if(!pop) return {err:'no pop'};"
+                "var heads=[].slice.call(pop.querySelectorAll('.geo-pal-head [data-rgpreset]'));"
+                "var oldReset=!!document.getElementById('geo-pal-reset');"
+                "var wrap=document.getElementById('geo-wrap'); if(!wrap) return {err:'no wrap'};"
+                "function gv(k){return getComputedStyle(wrap).getPropertyValue('--rg-'+k).trim();}"
+                "var ci=pop.querySelector('#geo-pal-grid input[data-rgk=\"c\"]');"
+                "if(!ci) return {err:'no c input'};"
+                "var want='#'+'3A6B8F';"          # 随便一个不可能是派生色的值
+                "ci.value=want; want=ci.value;"   # 浏览器可能规范化，以它读回来的为准
+                "ci.dispatchEvent(new Event('input',{bubbles:true}));"
+                "var cSet=gv('c');"
+                "var def=heads.filter(function(b){return b.getAttribute('data-rgpreset')==='def';})[0];"
+                "if(def) def.click();"
+                "var cReset=gv('c');"
+                "var cg={},n=0;"
+                "[].slice.call(document.querySelectorAll('#geo-stage .rm[data-sub]')).forEach(function(e){"
+                "  var v=getComputedStyle(e).getPropertyValue('--rg-cg').trim();"
+                "  if(v){cg[v]=1; n++;}"
+                "});"
+                "return {presets:heads.map(function(b){return b.textContent.trim();}),"
+                "  oldReset:oldReset, want:want, cSet:cSet, cReset:cReset,"
+                "  cgColors:Object.keys(cg).length, cgRooms:n};})())"
+            )) or {}
+            pp = out["palPreset"]
+            check("配色只剩「默认 / 经典」两个按钮，「还原」已删",
+                  pp.get("presets") == ["默认", "经典"] and pp.get("oldReset") is False,
+                  str(pp.get("presets") or pp.get("err")))
+            # 三步都要成立：① 输入框收下了这个色（不是被浏览器弹成 #000000）；
+            # ② 改 `c` 当场落到 `--rg-c`；③ 点「默认」把它撤掉（回落到按子区域派生）。
+            check("「默认」= 清掉本区自定义（`--rg-c` 先设上、再被移除）",
+                  bool(pp.get("want")) and
+                  (pp.get("want") or "").lower() != "#000000" and
+                  (pp.get("cSet") or "").upper() == (pp.get("want") or "").upper() and
+                  not (pp.get("cReset") or ""),
+                  "设成 %s（读回 %s）→ 默认后 %r"
+                  % (pp.get("want"), pp.get("cSet"), pp.get("cReset")))
+            check("房间仍有按子区域派生的 `--rg-cg`（没被固定灰抹平）",
+                  (pp.get("cgRooms") or 0) > 0, str(pp.get("cgRooms")))
 
             out["final"] = loads(js(
                 "JSON.stringify({modalStillOpen:!document.getElementById('modal').hidden,"

@@ -10,7 +10,8 @@
 **被删掉的三类数据源解析代码留在别处，只是不再挂节点**（不可见 ≠ 删数据）：
 · 房间标签 `Room.tags`（`model._layer_world_tags`）——将来按房间类型筛选还要用；
 · 放置物 `_settings.txt` 的 `PlacedObjects:` 解析（`fx.placed_objects`）——同上；
-· 业力门锁 `gates/locks.txt`（`model._gate_locks`）——房间卡的门信息仍在用。
+· 业力门锁 `gates/locks.txt`——V1.24 №8 起改为**导入时烘焙**进 `rooms[].karma`
+  （`mod_importer.read_gate_locks` / `bake_gate_karma`），渲染侧不再解析它。
 
 **不要再往 `anno` 里加字段**：`svg.py` 已经没有任何图标渲染代码，加了只是白占载荷。
 """

@@ -696,10 +696,15 @@
     background:currentColor}
   .rm-legend i.rm-lg-cross::before{left:0;top:4px;width:11px;height:3px}
   .rm-legend i.rm-lg-cross::after{left:4px;top:0;width:3px;height:11px}
-  .rm-legend button.rm-toggle{font:inherit;font-size:11px;padding:1px 7px;border-radius:6px;
-    cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--muted)}
-  .rm-legend button.rm-toggle.on{background:var(--accent);border-color:var(--accent);
-    color:var(--on-accent)}
+  /* 图例项本身就是开关（V1.24 №3）：7 类标记各一个 chip。开着 = 原色、无边框；
+     关掉 = 半透明 + 虚线框，**计数照旧显示**（"关掉就看不到有多少"只会更糊涂）。 */
+  .rm-legend button.rm-toggle{font:inherit;font-size:11px;padding:1px 6px;border-radius:6px;
+    cursor:pointer;border:1px solid transparent;background:transparent;color:inherit;
+    display:inline-flex;align-items:center;gap:3px;line-height:1.5}
+  .rm-legend button.rm-toggle:hover{border-color:var(--line2);background:rgba(127,127,127,.08)}
+  .rm-legend button.rm-toggle:not(.on){opacity:.45;border-style:dashed;border-color:var(--line2)}
+  .rm-legend button.rm-toggle:not(.on):hover{opacity:.75}
+  .rm-legend button.rm-toggle.on{background:transparent;border-color:transparent;color:inherit}
   .rm-legend .rm-hint{margin-left:auto;color:var(--dim)}
   .rm-empty{padding:34px 18px;text-align:center;color:var(--dim);font-size:12.5px;line-height:1.8}
   #rm-zoom-pct{min-width:42px;text-align:center;font-size:11px;color:var(--dim);
@@ -962,6 +967,25 @@
   .geo-anno label{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--dim);
     cursor:pointer}
   .geo-anno input[type=checkbox]{width:12px;height:12px;margin:0;accent-color:var(--accent)}
+  /* V1.24 №4：背景取色（浮层第四段）。只覆盖主体，子区域仍走派生色 */
+  .geo-bg{margin-top:8px;padding-top:7px;border-top:1px solid var(--line)}
+  .geo-bg .gb-head{display:flex;align-items:center;justify-content:space-between;
+    font-size:11px;color:var(--dim);margin-bottom:3px}
+  .geo-bg .gb-head .btn{font-size:10.5px;padding:2px 7px}
+  .geo-bg .gb-row{display:flex;align-items:center;gap:6px;margin:3px 0;
+    font-size:11.5px;color:var(--dim)}
+  .geo-bg .gb-row>span:first-child{width:42px;flex:none}
+  .geo-bg input[type=color]{width:34px;height:20px;margin:0;padding:0;
+    border:1px solid var(--line);border-radius:5px;background:none;cursor:pointer}
+  .geo-bg .gb-v{flex:1;text-align:right;font-style:normal;color:var(--text);
+    font-variant-numeric:tabular-nums}
+  /* 子区域行（V1.24 №4 rev.2）：名字是 `Looks to the Moon` 这种长串，吃掉剩余宽度再省略号；
+     色板与"已改/自动"固定在右侧，不跟着名字长短跳 */
+  .geo-bg #gc-bg-subs .gb-row>span:first-child{width:auto;flex:1;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .geo-bg #gc-bg-subs .gb-v{flex:none;min-width:24px}
+  /* 「已改」可点 → 单行恢复自动（不写死 cursor 在 .gb-v 上，免得"自动"看着像按钮） */
+  .geo-bg .gb-v.can-clear{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
   @keyframes pulse{
     0%{opacity:.9;transform:scale(1)}
     100%{opacity:0;transform:scale(1.9)}
@@ -2621,6 +2645,7 @@ function parseSave(raw, onProgress){
   state.regmapCurve = null;    /* 连线参数（S4）：null = 用 CURVE_DEF；全局一套，不分区域 */
   state.regmapEngine = '';     /* 排布引擎（W2）：'' = 跟随后端默认，'legacy' / 'zq' 手动 */
   state.regmapAnno = null;     /* 标注开关（W4）：null = 用 ANNO_DEF；{sub,kind,marks,gates,labels} */
+  state.regmapBgOverride = {};  /* 背景取色（V1.24 №4）：{区域:{子区域名:'#hex'}}，'' 键是主体 */
   state.roomExcluded = {};     /* 手动"此角色到不了"：{角色:{区域:[房间]}}，直接剔除出分母 */
   state.roomStrict = true;     /* 完成度口径：true=只算当前角色可达的房间 */
   /* 房间卡是否全屏：默认全屏（P4 起）。右栏清单只在全屏时可见，默认紧凑会让
@@ -2630,6 +2655,9 @@ function parseSave(raw, onProgress){
      默认矢量——实机图要 0.4~3.7 s 才算得出来，不打招呼就换成它等于让每间房都变慢。
      config.ui.roomCardStyle 有值时以配置为准（已在 DEFAULT_UI 登记）。 */
   state.roomCardStyle = 'vector';
+  /* 房间卡图例的独立开关（V1.24 №3）：只存「关掉的类」`{climb:0,…}`，缺省 = 全开。
+     在 `core/paths.py:DEFAULT_UI` 登记过，否则 save_config 会把它裁掉。 */
+  state.roomCardMarks = {};
   state.muFilter = 'unseen';   /* 地图弹窗里的房间号清单标签：all / unseen / seen */
   state.sources = [];          /* 来源清单（Original / Downpour / Watcher / 各模组） */
   state.sourcePresets = ['Original','Downpour','Watcher','Mod'];
@@ -5594,6 +5622,10 @@ function parseSave(raw, onProgress){
     var geoIdx = {};          /* 大写房号 → 图上的真实名字 */
     var mapNames = [];        /* 图上有地形的房间（已排序） */
     var noFile = [];          /* 清单里有、图上没有（无地形文件） */
+    /* 大门房（GATE_*）：**有地形、但故意不画**在区域图上（层序/坐标都在区域之外）。
+       以前它跟"缺文件"混在一栏，看起来像数据不全；V1.24 №8 单列，顺带能点开看业力。 */
+    var gateNames = [];
+    var gateOnMap = 0;        /* 其中真的画在图上的座数（V1.24：大门上图） */
     var listState = ['all', 'unseen', 'seen'].indexOf(state.muFilter) >= 0 ? state.muFilter : 'unseen';
     var listCollapsed = false;
     var pendingFocus = '';
@@ -5634,13 +5666,33 @@ function parseSave(raw, onProgress){
       var c = counts();
       var tabs = [['all', '全部', c.total], ['unseen', '未探索', c.unseen], ['seen', '已探索', c.seen]];
       var extra = '';
-      if (listState === 'all' && noFile.length){
-        extra = '<div class="mu-split">图上没有这 ' + noFile.length + ' 间（没有地形文件）</div>' +
-          noFile.map(function(nm){
-            return '<button class="mu-chip nocoord' + (isSeen(nm) ? ' seen' : '') +
-              '" type="button" data-nofile="' + esc(nm) + '" ' +
-              'title="没有地形文件，画不到图上；点开可以看房间卡">' + esc(nm) + '</button>';
-          }).join('');
+      var chipOff = function(nm, title){
+        return '<button class="mu-chip nocoord' + (isSeen(nm) ? ' seen' : '') +
+          '" type="button" data-nofile="' + esc(nm) + '" title="' + esc(title) + '">' +
+          esc(nm) + '</button>';
+      };
+      if (listState === 'all' && (noFile.length || gateNames.length)){
+        if (noFile.length){
+          extra += '<div class="mu-split">图上没有这 ' + noFile.length +
+            ' 间（没有地形文件）</div>' +
+            noFile.map(function(nm){
+              return chipOff(nm, '没有地形文件，画不到图上；点开可以看房间卡');
+            }).join('');
+        }
+        if (gateNames.length){
+          extra += '<div class="mu-split">大门 ' + gateNames.length + ' 座' +
+            (gateOnMap === gateNames.length ? '（虚线圈出的那几间）'
+              : (gateOnMap ? '（图上 ' + gateOnMap + ' 座，其余本区没有可连的房间）'
+                           : '（画不到图上）')) + '</div>' +
+            gateNames.map(function(nm){
+              var on = !!geoIdx[String(nm).toUpperCase()];
+              return on
+                ? '<button class="mu-chip' + (isSeen(nm) ? ' seen' : '') +
+                  '" type="button" data-focus="' + esc(nm) + '" ' +
+                  'title="在图上定位；点开看房间卡与业力门槛">' + esc(nm) + '</button>'
+                : chipOff(nm, '这扇门在本区没有可连的房间，画不进图；点开看房间卡');
+            }).join('');
+        }
       }
       return '<div class="map-unvisited">' +
           '<div class="mu-head mu-tabs">' +
@@ -5657,9 +5709,11 @@ function parseSave(raw, onProgress){
           '<div class="mu-body' + (listCollapsed ? ' collapsed' : '') + '" id="mu-body">' +
             chipsHTML(byTab(mapNames, listState), listState) + extra +
           '</div>' +
-          (noFile.length && listState !== 'all'
-            ? '<div class="map-none-hint">另有 ' + noFile.length +
-              ' 间没有地形文件，切到「全部」可以看到。</div>' : '') +
+          ((noFile.length || gateNames.length) && listState !== 'all'
+            ? '<div class="map-none-hint">另有 ' + [
+                (noFile.length ? noFile.length + ' 间没有地形文件' : ''),
+                (gateNames.length ? gateNames.length + ' 座大门（' + gateOnMap + ' 座在图上）' : '')
+              ].filter(Boolean).join(' / ') + '，切到「全部」可以看到。</div>' : '') +
         '</div>';
     }
     function updateStat(){
@@ -5670,6 +5724,8 @@ function parseSave(raw, onProgress){
       var pct = c.total ? (c.seen / c.total * 100).toFixed(1) : '0.0';
       var tail = [];
       if (noFile.length) tail.push('另有 ' + noFile.length + ' 间无地形文件');
+      if (gateNames.length) tail.push('大门 ' + gateNames.length + ' 座' +
+        (gateOnMap ? '（图上 ' + gateOnMap + '）' : '（未上图）'));
       if (echoCount) tail.push('回响 ' + echoCount);
       el.innerHTML = '图上 ' + c.total + ' 间 · 已探索 ' + c.seen + ' / ' + c.total +
         '（' + pct + '%）' + (tail.length ? '<br>' + tail.join(' · ') : '');
@@ -5692,10 +5748,29 @@ function parseSave(raw, onProgress){
          反过来（清单口径里的房间没有地形）才进"无地形文件"那一栏。
          不这么定会出现两个数字同屏打架（GW 实测：图上 124 间 / 清单口径 87 间，差 37 间
          是别的来源与变体的房间，几何图整区都画）。 */
-      mapNames = Object.keys(geoIdx).map(function(k){ return geoIdx[k]; }).sort();
-      allNames.forEach(function(nm){
-        if (!geoIdx[String(nm).toUpperCase()]) noFile.push(nm);
+      /* 大门 V1.24 也画进图里，但**不进分母**：存档基本不记录门房间，
+         混进来会把「已探索」百分比平白压低。清单里单独一栏，点一下照样能定位/开卡。 */
+      mapNames = []; gateNames = [];
+      var seenGate = {};
+      Object.keys(geoIdx).forEach(function(k){
+        var nm = geoIdx[k];
+        if (/^GATE_/i.test(nm)){ gateNames.push(nm); seenGate[k] = 1; }
+        else mapNames.push(nm);
       });
+      mapNames.sort();
+      allNames.forEach(function(nm){
+        var up = String(nm).toUpperCase();
+        if (/^GATE_/i.test(nm)){
+          /* 没画上图的门（缺地形 / 本区没有可连的房间）也要能点开看业力门槛 */
+          if (!geoIdx[up] && !seenGate[up]){ gateNames.push(nm); seenGate[up] = 1; }
+          return;
+        }
+        if (!geoIdx[up]) noFile.push(nm);
+      });
+      gateNames.sort();
+      gateOnMap = gateNames.filter(function(nm){
+        return !!geoIdx[String(nm).toUpperCase()];
+      }).length;
       geoReady = true;
       renderList();
       if (pendingFocus){
@@ -5723,6 +5798,8 @@ function parseSave(raw, onProgress){
       '<b>算出来的</b>：房间按真实尺寸画地形，房间之间用三次贝塞尔连线，' +
       '线压在房间上面，进到房间里的那一段半透明。<br>' +
       '<b>已探索</b>的房间有一圈高亮框（跟随存档，手动标记也算）。<br>' +
+      '<b>大门</b>（<code>GATE_*</code>）画成虚线圈出的小房间，贴在区域边界那间房上，' +
+      '点开房间卡能看业力门槛；门不计进「N 间」的完成度。<br>' +
       '<b>水 / 酸液 / 沙</b>按房间设置画：水在岩壁下面（只有空的格子才显色），' +
       '沙从沙面往下堆满。<br>' +
       '<b>可通行色（含子区域色）与背景结构色</b>不手调：从区域调色板提取；' +
@@ -5748,9 +5825,8 @@ function parseSave(raw, onProgress){
         '<div class="geo-hold" id="geo-hold">正在算布局…<br>大区域要几秒</div>' +
         '<div class="geo-pal-pop" id="geo-pal-pop" hidden>' +
           '<div class="geo-pal-head"><span>本区设置</span>' +
-            '<button class="btn ghost" data-rgpreset="def" type="button" title="新色卡 + 区域调色板提取色">默认</button>' +
-            '<button class="btn ghost" data-rgpreset="classic" type="button" title="旧版地图配色（青底黄管），仅作对照">经典</button>' +
-            '<button class="btn ghost" id="geo-pal-reset" type="button" title="清掉本区自定义，回到默认配色">还原</button></div>' +
+            '<button class="btn ghost" data-rgpreset="def" type="button" title="清掉本区自定义，回到区域调色板提取色（按子区域派生）">默认</button>' +
+            '<button class="btn ghost" data-rgpreset="classic" type="button" title="旧版地图配色（青底黄管），仅作对照">经典</button></div>' +
           '<div class="rp-grid" id="geo-pal-grid"></div>' +
           '<div class="geo-curve" id="geo-curve">' +
             '<div class="gc-head"><span>连线 / 杆子</span>' +
@@ -5775,6 +5851,14 @@ function parseSave(raw, onProgress){
               '<label title="按子区域给房间铺不同的可通行底色"><input type="checkbox" data-ga="sub"><span>子区域色</span></label>' +
               '<label title="在子区域中心写上名字"><input type="checkbox" data-ga="labels"><span>子区域名</span></label>' +
             '</div>' +
+          '</div>' +
+          '<div class="geo-bg" id="geo-bg">' +
+            '<div class="gb-head"><span title="本区的「可通行」底色：主体与每个子区域可以分别指定">背景取色</span>' +
+              '<button class="btn ghost" id="geo-bg-reset" type="button" title="全部回到调色板提取色">还原</button></div>' +
+            '<label class="gb-row" title="本区主体（没有子区域归属的房间）">' +
+              '<span>主体</span><input type="color" id="gc-bg"><i class="gb-v" id="gc-bg-v"></i></label>' +
+            /* 子区域行在 SVG 到手后按 `groups[]` 生成：没打开过的区，前端不知道有哪些子区域 */
+            '<div id="gc-bg-subs"></div>' +
           '</div>' +
           '<div class="geo-pal-note" id="geo-pal-note"></div>' +
         '</div>' +
@@ -5847,6 +5931,105 @@ function parseSave(raw, onProgress){
     }
     rgRender();
 
+    /* ---- 背景取色（V1.24 №4）：**主体 + 每个子区域**都能单独指定 ----
+       与上面 16 项色卡的区别：那套是「整区所有房间（含子区域）统一」，这套按组覆盖，
+       点哪一行只改那一组（`""` = 主体，其余键 = 子区域名，与后端 `groups[].sub` 同源）。
+       两处都设了的话，色卡那套会赢（它会让后端不再按子区域下发 `--rg-air`）。 */
+    var bgInp = $('gc-bg'), bgV = $('gc-bg-v'), bgReset = $('geo-bg-reset'),
+        bgSubs = $('gc-bg-subs');
+    var geoAir = '';                 /* 后端回传的本区主体派生色（"自动"就显示它） */
+    var geoGroups = [];              /* 后端回传的配色表：[{sub, air, struct, auto, autoStruct, src}] */
+    var geoRegionColors = true;      /* 后端是否按子区域下发了 `--rg-air`（false 就别改 DOM） */
+    /* 吸收回包里的配色表：子区域行靠它生成。`auto/autoStruct` 是**派生色**（没有覆盖时
+       的值），`air/struct` 是当前生效值——所以"自动"永远显示 `auto`，不是 `air`。 */
+    function bgLearn(r){
+      geoGroups = (r && r.groups) || [];
+      geoRegionColors = !(r && r.regionColors === false);
+      var head = geoGroups.filter(function(g){ return !g.sub; })[0];
+      if (head) geoAir = head.auto || head.air || '';
+    }
+    /* 把当前「背景取色」直接刷到已插入的 SVG 上（V1.24：**不重新取图**）。
+       为什么这么做：以前改色走 `geoReload()` → 重新拉 260–550 KB 的 SVG 并整块替换 DOM，
+       还要连布局缓存一起作废（1–2 秒 + 地图重排）。现在只改这几间房 `<g>` 上的两个
+       CSS 变量，跟改水体色一样是纯样式变更，0 请求、0 重排。
+       高清层切换/改曲率时 `loadSvg()` 会重新插 SVG，那里也会再调一次本函数。 */
+    function applyBgDom(){
+      if (!svgEl || !geoRegionColors) return;
+      var ov = bgMap(KEY), bysub = {};
+      geoGroups.forEach(function(g){ bysub[g.sub || ''] = g; });
+      Array.prototype.forEach.call(svgEl.querySelectorAll('.rm[data-sub]'), function(el){
+        var sub = el.getAttribute('data-sub') || '', g = bysub[sub];
+        var hex = ov[sub] || (g && (g.auto || g.air));
+        if (!hex || !/^#[0-9A-Fa-f]{6}$/.test(hex)) return;
+        var st = ov[sub] ? structColor(hex) : (g && (g.autoStruct || g.struct));
+        el.style.setProperty('--rg-air', hex);
+        if (st){
+          el.style.setProperty('--rg-cg', st);
+        }
+      });
+    }
+    function bgPaint(){
+      var ov = bgMap(KEY);
+      if (bgInp) bgInp.value = ov[''] || geoAir || regmapColorsOf(KEY).air || RG_FALLBACK.air || '#8C97AF';
+      if (bgV){
+        bgV.textContent = ov[''] ? '已改' : '自动';
+        bgV.className = 'gb-v' + (ov[''] ? ' can-clear' : '');
+        bgV.title = ov[''] ? '点一下回到自动' : '自动：由本区调色板的「可通行」提取';
+      }
+      if (!bgSubs) return;
+      /* 子区域行只能在拿到 SVG 之后建：没打开过的区，前端不知道有哪些子区域 */
+      var subs = geoGroups.filter(function(g){ return g.sub; });
+      bgSubs.innerHTML = subs.map(function(g){
+        var on = !!ov[g.sub];
+        return '<label class="gb-row" title="' + esc(g.sub) + '（子区域）">' +
+          '<span>' + esc(g.sub) + '</span>' +
+          '<input type="color" data-sbg="' + esc(g.sub) + '" value="' +
+            (on ? ov[g.sub] : (g.auto || g.air)) + '">' +
+          '<i class="gb-v' + (on ? ' can-clear' : '') + '" data-sclear="' +
+            esc(g.sub) + '" title="' + (on ? '点一下回到自动' : '自动：由本区调色板 / 子区域名派生') +
+            '">' + (on ? '已改' : '自动') + '</i></label>';
+      }).join('');
+      Array.prototype.forEach.call(bgSubs.querySelectorAll('input[data-sbg]'), function(el){
+        var sub = el.getAttribute('data-sbg');
+        el.addEventListener('input', function(){
+          bgSet(KEY, sub, el.value);
+          var lab = el.parentNode.querySelector('.gb-v');
+          if (lab) lab.textContent = '已改';
+          applyBgDom();                 /* 拖动过程中就直接上屏，不等 change */
+        });
+        el.addEventListener('change', function(){ saveBgOverride(); applyBgDom(); });
+      });
+      /* 「已改」那两个字可以点：只把这一行恢复自动（整区还原在段头）。
+         必须 preventDefault：它在 `<label>` 里，不拦的话点一下会顺手把取色器打开。 */
+      Array.prototype.forEach.call(bgSubs.querySelectorAll('.gb-v.can-clear'), function(el){
+        el.addEventListener('click', function(ev){
+          ev.preventDefault(); ev.stopPropagation();
+          bgSet(KEY, el.getAttribute('data-sclear'), '');
+          saveBgOverride(); bgPaint(); applyBgDom();
+        });
+      });
+    }
+    bgPaint();
+    if (bgInp){
+      bgInp.addEventListener('input', function(){
+        bgSet(KEY, '', bgInp.value);
+        if (bgV) bgV.textContent = '已改';
+        applyBgDom();
+      });
+      bgInp.addEventListener('change', function(){ saveBgOverride(); applyBgDom(); });
+    }
+    /* 主体那一行的「已改」也能点：只清主体（子区域的覆盖保留） */
+    if (bgV) bgV.addEventListener('click', function(ev){
+      if (!bgMap(KEY)['']) return;
+      ev.preventDefault(); ev.stopPropagation();   /* 别让它触发同一 label 里的取色器 */
+      bgSet(KEY, '', '');
+      saveBgOverride(); bgPaint(); applyBgDom();
+    });
+    if (bgReset) bgReset.addEventListener('click', function(){
+      /* 整区一起还原（主体 + 所有子区域），比"一行一个还原按钮"省地方也省心 */
+      if (state.regmapBgOverride) delete state.regmapBgOverride[KEY];
+      bgPaint(); saveBgOverride(); applyBgDom();
+    });
     /* ---- 连线 / 杆子参数（全局一套，存 config.ui.regmapCurve）---- */
     var gcIds = { k: 'gc-k', min: 'gc-min', max: 'gc-max', width: 'gc-width',
                   inner: 'gc-inner', bar: 'gc-bar' };
@@ -5876,10 +6059,11 @@ function parseSave(raw, onProgress){
     function geoReload(){
       var c = curveOf();
       var dens = hi.loaded ? 4 : 2;
-      bridgeCall('regmap_svg', code, slugcat || '', engOpts(), 2400, false, dens,
+      bridgeCall('regmap_svg', code, slugcat || '', engOpts(code), 2400, false, dens,
                  { mode: c.mode, k: c.k, min: c.min, max: c.max },
                  c.inner, c.width ? c.width : null, c.bar, annoOf()).then(function(r){
         if (!r || !r.ok || !document.getElementById('geo-stage')) return;
+        bgLearn(r); bgPaint();        /* 换了层/参数，"自动"值可能与上次不同 */
         if (loadSvg(r, true)) setMeta(' · ' + r.links + ' 边 · ' + (r.bytes / 1024).toFixed(0) + ' KB');
       }, function(){});
     }
@@ -5960,29 +6144,28 @@ function parseSave(raw, onProgress){
     if (pop) pop.addEventListener('click', function(ev){ ev.stopPropagation(); });
     stage.addEventListener('click', function(){ if (!pop.hidden) pop.hidden = true; });
 
-    /* 两套预设：默认（新色卡 + 提取色）/ 经典（青底黄管）。点一下整组写进本区，之后还能单项微调 */
+    /* 两个入口（V1.24 №9b 起）：
+       · **默认** = 清掉本区自定义 → 回到后端按区域调色板提取、按子区域派生的颜色；
+       · **经典** = 旧版地图配色（青底黄管），整组写进本区，之后还能单项微调。
+       原来的「还原」已删：它与「默认」语义重叠，而旧「默认」会把 `c` 写成固定值、
+       反过来盖掉每个子区域的 `--rg-cg`（见 `regmapColorsOf` 对 `c` 的特判）。
+       现在「默认」干的就是原来「还原」的事。 */
     Array.prototype.forEach.call(pop.querySelectorAll('[data-rgpreset]'), function(btn){
       btn.addEventListener('click', function(ev){
         ev.stopPropagation();
-        var src = btn.getAttribute('data-rgpreset') === 'classic' ? RG_CLASSIC : regmapDefaults();
         if (!state.regmapColors) state.regmapColors = {};
-        state.regmapColors[KEY] = {};
-        RG_ITEMS.forEach(function(it){
-          state.regmapColors[KEY][it[0]] = src[it[0]] || RG_FALLBACK[it[0]];
-        });
+        if (btn.getAttribute('data-rgpreset') === 'classic'){
+          state.regmapColors[KEY] = {};
+          RG_ITEMS.forEach(function(it){
+            state.regmapColors[KEY][it[0]] = RG_CLASSIC[it[0]] || RG_FALLBACK[it[0]];
+          });
+        } else {
+          delete state.regmapColors[KEY];
+        }
         paintRegmapColors(wrap, KEY);
         saveRegmapColors();
         rgRender();
       });
-    });
-
-    var prst = $('geo-pal-reset');
-    if (prst) prst.addEventListener('click', function(ev){
-      ev.stopPropagation();
-      if (state.regmapColors) delete state.regmapColors[KEY];
-      paintRegmapColors(wrap, KEY);
-      saveRegmapColors();
-      rgRender();
     });
 
     /* ---- 缩放 / 平移：改 viewBox（改 transform 会糊） ---- */
@@ -6023,23 +6206,27 @@ function parseSave(raw, onProgress){
     }
 
     function markDim(){
-      var nSeen = 0, nAll = 0;
+      var nSeen = 0, nAll = 0, nGate = 0;
       Array.prototype.forEach.call(stage.querySelectorAll('.rm'), function(g){
         var nm = g.getAttribute('data-room') || '';
         var seen = roomSeen(code, nm, !!visited[String(nm).toUpperCase()]);
-        nAll++;
+        /* 门节点照样上色/上框，但**不进「N 间」**：那是个完成度分母，门不在存档的
+           已探索表里，算进去等于凭空扣分（V1.24）。 */
+        var isGate = g.classList.contains('gate');
+        if (isGate) nGate++; else nAll++;
         /* 已探索 = 房间里那圈 `<rect class="fr">` 显示出来；未探索不压暗，
            只在清单切标签时按 `data-filter` 临时压暗。 */
         g.classList.toggle('seen', seen);
         g.classList.toggle('dim', !seen);
-        if (seen) nSeen++;
+        if (seen && !isGate) nSeen++;          /* 门不参与完成度（分子分母都不算） */
       });
-      return { seen: nSeen, all: nAll };
+      return { seen: nSeen, all: nAll, gates: nGate };
     }
     function setMeta(extra){
       if (!metaEl) return;
       var c = markDim();
-      metaEl.textContent = c.all + ' 间 · 已探索 ' + c.seen + '/' + c.all + (extra || '');
+      metaEl.textContent = c.all + ' 间' + (c.gates ? ' · 大门 ' + c.gates + ' 座' : '') +
+        ' · 已探索 ' + c.seen + '/' + c.all + (extra || '');
     }
 
     function loadSvg(r, keepView){
@@ -6051,6 +6238,10 @@ function parseSave(raw, onProgress){
       svgEl.classList.add('geo-svg');
       W = r.w; H = r.h;
       if (keepView) applyVB(); else fitVB();
+      /* 新插入的 SVG 一律按当前「背景取色」刷一遍（打开 / 改曲率 / 换高清层都走这里）。
+         后端其实也会按 `opts.bg` 出好色，这里再刷一次是为了**拖动取色器过程中的
+         DOM 覆盖**不会在换层时被吞掉，代价只有几十次 style 写入。 */
+      applyBgDom();
       return true;
     }
 
@@ -6061,7 +6252,7 @@ function parseSave(raw, onProgress){
       hi.busy = true;
       var seqW = W;
       var cv = curveOf();
-      bridgeCall('regmap_svg', code, slugcat || '', engOpts(), 2400, false, 4,
+      bridgeCall('regmap_svg', code, slugcat || '', engOpts(code), 2400, false, 4,
                  { mode: cv.mode, k: cv.k, min: cv.min, max: cv.max },
                  cv.inner, cv.width ? cv.width : null, cv.bar, annoOf()).then(function(r2){
         hi.busy = false;
@@ -6082,7 +6273,11 @@ function parseSave(raw, onProgress){
       Array.prototype.forEach.call(stage.querySelectorAll('.rm[data-room]'), function(el){
         if (!g && String(el.getAttribute('data-room')).toUpperCase() === want) g = el;
       });
-      if (!g){ toast(name + ' 没有地形文件，图上画不出来'); return; }
+      if (!g){
+      toast(/^GATE_/i.test(name) ? '这扇门在本区没有可连的房间，画不进图；房间卡可以直接看'
+                                 : (name + ' 没有地形文件，图上画不出来'));
+      return;
+    }
       var bb = null;
       try { bb = g.getBBox(); } catch (e) { bb = null; }
       if (bb && bb.width >= 0 && bb.height >= 0){
@@ -6385,7 +6580,7 @@ function parseSave(raw, onProgress){
     window.addEventListener('resize', onResize);
 
     var cv0 = curveOf();
-    bridgeCall('regmap_svg', code, slugcat || '', engOpts(), 2400, false, 2,
+    bridgeCall('regmap_svg', code, slugcat || '', engOpts(code), 2400, false, 2,
                { mode: cv0.mode, k: cv0.k, min: cv0.min, max: cv0.max },
                cv0.inner, cv0.width ? cv0.width : null, cv0.bar, annoOf()).then(function(r){
       if (!r || !r.ok){
@@ -6395,6 +6590,8 @@ function parseSave(raw, onProgress){
         return;
       }
       hold.style.display = 'none';
+      bgLearn(r);
+      bgPaint();
       if (!loadSvg(r, false)){ hold.style.display = ''; hold.textContent = 'SVG 插入失败'; return; }
       syncList();
       setMeta(' · ' + r.links + ' 边 · ' + (r.bytes / 1024).toFixed(0) + ' KB');
@@ -6461,9 +6658,19 @@ function parseSave(raw, onProgress){
       bar: num(c.bar, CURVE_DEF.bar)
     };
   }
-  /* 排布引擎（W2）：'' = 用后端默认；返回值直接当 regmap_svg 的 opts */
-  function engOpts(){
-    return state.regmapEngine ? { engine: state.regmapEngine } : null;
+  /* 排布引擎（W2）：'' = 用后端默认；返回值直接当 regmap_svg 的 opts。
+     `bg`（V1.24 №4）= 本区「背景取色」的覆盖值，没有就不传。
+     **必须进 opts**：它进 `_regmap_key`，否则改完颜色拿到的还是内存里的旧 SVG。 */
+  /* 排布引擎（W2）：'' = 用后端默认；返回值直接当 regmap_svg 的 opts。
+     `bg`（V1.24 №4）= 本区「背景取色」的覆盖表 `{子区域名: '#hex'}`，`""` 是主体；
+     只传实际改过的组。**必须进 opts**：它进 `_regmap_key`，否则改完颜色拿到的
+     还是内存里的旧 SVG。 */
+  function engOpts(cd){
+    var o = {};
+    if (state.regmapEngine) o.engine = state.regmapEngine;
+    var bg = bgMap(cd);
+    if (Object.keys(bg).length) o.bg = bg;
+    return Object.keys(o).length ? o : null;
   }
   /* 标注（W4 / №2）：与 `core/regmap/svg.py:ANNO_DEFAULTS` 一一对应，**全局一套**。
      只剩两项：`sub` 子区域色、`labels` 子区域名。房间图标 / 物件 / 业力门三类已删
@@ -6516,6 +6723,69 @@ function parseSave(raw, onProgress){
   function saveRegmapColors(){
     if (!hasBridge()) return;
     bridgeCall('save_config', { ui: { regmapColors: state.regmapColors } }).catch(function(){});
+  }
+  /* 背景取色（V1.24 №4）：按区存 `{区域: {子区域名: '#hex'}}`，`""` 是主体。
+     必须登记在 `paths.DEFAULT_UI`（白名单一裁，重启就回到调色板提取色）。
+     `bgMap` 会把 rev.1 的旧形态（值是单个 `"#hex"`）顺手升成 `{"": "#hex"}`。 */
+  function bgMap(code){
+    var v = (state.regmapBgOverride || {})[String(code || '').toUpperCase()];
+    if (!v) return {};
+    if (typeof v === 'string') return v ? { '': v } : {};   /* 旧形态：只有主体色 */
+    var out = {};
+    Object.keys(v).forEach(function(k){ if (v[k]) out[k] = v[k]; });
+    return out;
+  }
+  function bgSet(code, sub, hex){
+    var cd = String(code || '').toUpperCase();
+    if (!state.regmapBgOverride) state.regmapBgOverride = {};
+    var m = bgMap(cd);
+    if (hex) m[sub] = hex; else delete m[sub];
+    if (Object.keys(m).length) state.regmapBgOverride[cd] = m;
+    else delete state.regmapBgOverride[cd];
+  }
+  /* 背景结构色的 JS 版：与 `core/regmap/colors.py:struct_color()` 逐位一致
+     （HSV 下 V*0.78、S*0.96，最后 `int(x*255)` 截断而非四舍五入）。
+     为什么要在前端重写一遍：改背景色时**不发后端请求**，直接改房间 `<g>` 的 CSS 变量，
+     结构色必须当场算出来；对不上就会出现"地板变了、暗部没变"的两层色。
+     ⚠️ 这两个系数改一处必须改两处（Python 的 STRUCT_V/STRUCT_S 与这里），否则改色时跳变。 */
+  function structColor(hex){
+    var s = String(hex || '').replace('#', '');
+    if (s.length !== 6) return '';
+    var VR = 0.78, SR = 0.96;                             /* STRUCT_V / STRUCT_S */
+    var r = parseInt(s.substr(0, 2), 16) / 255,
+        g = parseInt(s.substr(2, 2), 16) / 255,
+        b = parseInt(s.substr(4, 2), 16) / 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, h = 0;
+    if (d > 0){
+      if (mx === r) h = ((g - b) / d) % 6;
+      else if (mx === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h /= 6;
+      if (h < 0) h += 1;
+    }
+    var sat = mx > 0 ? d / mx : 0;
+    var v = Math.max(0, Math.min(1, mx * VR));            /* STRUCT_V（V1.24 №11：回退到 0.78） */
+    sat = Math.max(0, Math.min(1, sat * SR));             /* STRUCT_S */
+    var i = Math.floor(h * 6), f = h * 6 - i;
+    var p = v * (1 - sat), q = v * (1 - f * sat), t = v * (1 - (1 - f) * sat);
+    var rgb;
+    switch (i % 6){
+      case 0: rgb = [v, t, p]; break;
+      case 1: rgb = [q, v, p]; break;
+      case 2: rgb = [p, v, t]; break;
+      case 3: rgb = [p, q, v]; break;
+      case 4: rgb = [t, p, v]; break;
+      default: rgb = [v, p, q];
+    }
+    return '#' + rgb.map(function(x){
+      var n = Math.trunc(x * 255);
+      if (n < 0) n = 0; if (n > 255) n = 255;
+      return ('0' + n.toString(16)).slice(-2);
+    }).join('').toUpperCase();
+  }
+  function saveBgOverride(){
+    if (!hasBridge()) return;
+    bridgeCall('save_config', { ui: { regmapBgOverride: state.regmapBgOverride || {} } }).catch(function(){});
   }
 
   /* ---------------- 房间关系图（Obsidian Graph View 复刻） ----------------
@@ -8625,7 +8895,21 @@ function parseSave(raw, onProgress){
   var rmExitTargets = [];   /* 第 i 号出口指向的房间名（预取用；无去向是 null） */
   var rmHoverExit = -1;   /* 当前悬停的出口下标，-1 = 没有 */
   var rmOrder = [], rmIndex = -1;   /* 上一间/下一间：顺序＝地图弹窗当前标签的清单 */
-  var rmShowClimb = true;      /* 「背景结构」底色开关：大片底色，能一键关掉 */
+  /* 图例上可独立开关的标记类（V1.24 №3）：键与 `buildRoomMarks()` 的产物一一对应。
+     `climb` = 背景结构底色（原来的「底色」按钮），其余是四类标记 + 杆子/管道两路。
+     关掉只影响绘制，图例上的计数**保留**（变灰），免得"关掉就看不到有多少"。 */
+  var RM_SHOW_DEF = { climb: 1, beam: 1, port: 1, pipe: 1, exit: 1, den: 1, creature: 1 };
+  var rmShow = { climb: true, beam: true, port: true, pipe: true, exit: true, den: true, creature: true };
+  function rmShowApply(){
+    var off = state.roomCardMarks || {};
+    Object.keys(RM_SHOW_DEF).forEach(function(k){ rmShow[k] = off[k] !== 0; });
+  }
+  function rmShowSave(){
+    var off = {};
+    Object.keys(RM_SHOW_DEF).forEach(function(k){ if (!rmShow[k]) off[k] = 0; });
+    state.roomCardMarks = off;
+    if (hasBridge()) bridgeCall('save_config', { ui: { roomCardMarks: off } }).catch(function(){});
+  }
   var rmView = { scale: 1, fit: 1, tx: 0, ty: 0, cw: 0, ch: 0, dpr: 1 };
 
   /* ---------------- 实机视图（V1.2 · M2） ----------------
@@ -8680,12 +8964,14 @@ function parseSave(raw, onProgress){
 
   function roomMetaOf(code, name){
     var rd = regionData(code), nm = String(name).toUpperCase();
-    var out = { shelter: false, gate: false, layer: null };
+    var out = { shelter: false, gate: false, layer: null, karma: null };
     ((rd && rd.layers) || []).forEach(function(L){
       (L.rooms || []).forEach(function(r){
         if (String(r.name).toUpperCase() !== nm) return;
         if (r.shelter) out.shelter = true;
         if (r.gate) out.gate = true;
+        /* 业力门槛（V1.24 №8）：官方层带着烘焙好的 `[左, 右]`，模组补丁层没有 */
+        if (!out.karma && r.karma && r.karma.length >= 2) out.karma = r.karma;
         if (r.layer != null && out.layer === null) out.layer = String(r.layer);
       });
     });
@@ -9042,7 +9328,14 @@ function parseSave(raw, onProgress){
     if (meta.layer !== null) bits.push('第 ' + meta.layer + ' 层');
     bits.push(info.seen ? '已探索' : '未探索');
     if (meta.shelter) bits.push('庇护所');
-    if (meta.gate) bits.push('业力门');
+    /* 业力门（V1.24 №8）：数值是导入时从 `world/gates/locks.txt` 烘焙进 `rooms[].karma` 的，
+       只做文字、不画徽标。模组门没有门槛值 → 明说「无数据」，不猜。 */
+    if (meta.gate){
+      var km = (res && res.karma) || meta.karma;
+      bits.push((km && km.length >= 2)
+        ? '业力门 左' + km[0] + '/右' + km[1]
+        : '业力门（无数据）');
+    }
     if (info.pearl) bits.push('有珍珠');
     if (rmFrom && rmFrom.fromName){
       bits.push('← 来自 ' + rmFrom.fromName + ' 的 ' + (rmFrom.exitIndex + 1) + ' 号出口');
@@ -9065,30 +9358,55 @@ function parseSave(raw, onProgress){
     var climbCount = rmMarks.climb.length;
     var byKind = { exit: 0, den: 0, creature: 0 };
     rmMarks.marks.forEach(function(m){ byKind[m[2]] = (byKind[m[2]] || 0) + 1; });
+    rmShowApply();          /* 每开一张卡按配置刷新一次开关态（V1.24 №3 持久化） */
+
+    /* 图例项 → 可点开关。`climb` 沿用老 id `#rm-climb-toggle`（check_room 依赖它），
+       其余用 `data-k`；关掉只影响绘制，计数保留在原位（变灰）。 */
+    var lgBtn = function(k, iconCls, label, countText, styleAttr){
+      var on = rmShow[k] !== false;
+      var icon = (iconCls === 'climb')
+        ? '<i style="background:var(--rm-climb)"></i>'
+        : '<i class="' + iconCls + '"></i>';
+      return '<button class="rm-toggle' + (on ? ' on' : '') + '" type="button"' +
+        (k === 'climb' ? ' id="rm-climb-toggle"' : ' data-k="' + k + '"') +
+        (styleAttr ? ' style="' + styleAttr + '"' : '') +
+        ' title="显示 / 隐藏「' + label + '」（计数保留）">' + icon + label + ' ' +
+        countText + '</button>';
+    };
 
     $('rm-legend').innerHTML =
       '<span><i style="background:var(--rm-solid)"></i>实心 ' + solid + '</span>' +
       '<span><i style="background:var(--rm-air)"></i>空气 ' + air + '</span>' +
       (slope ? '<span><i style="background:var(--rm-slope)"></i>斜面 ' + slope + '</span>' : '') +
-      (climbCount ? '<span><i style="background:var(--rm-climb)"></i>背景结构 ' + climbCount + '</span>' : '') +
-      (beamCount ? '<span><i class="rm-lg-beam"></i>杆子 ' + beamCount + ' 段</span>' : '') +
-      (portCount ? '<span><i class="rm-lg-port"></i>管道口 ' + portCount + '</span>' : '') +
-      (dotCount ? '<span><i class="rm-lg-pipe"></i>管道 ' + dotCount + '</span>' : '') +
-      (byKind.exit ? '<span style="color:var(--rm-exit)"><i class="rm-lg-cross"></i>通道入口 ' + byKind.exit + '</span>' : '') +
-      (byKind.den ? '<span style="color:var(--rm-den)"><i class="rm-lg-cross"></i>巢穴 ' + byKind.den + '</span>' : '') +
-      (byKind.creature ? '<span style="color:var(--rm-creature)"><i class="rm-lg-cross"></i>生物通道 ' + byKind.creature + '</span>' : '') +
-      (climbCount ? '<button class="rm-toggle' + (rmShowClimb ? ' on' : '') +
-        '" type="button" id="rm-climb-toggle" title="显示 / 隐藏背景结构底色">底色</button>' : '') +
+      (climbCount ? lgBtn('climb', 'climb', '背景结构', climbCount, '') : '') +
+      (beamCount ? lgBtn('beam', 'rm-lg-beam', '杆子', beamCount + ' 段',
+                         'color:var(--rm-beam)') : '') +
+      (portCount ? lgBtn('port', 'rm-lg-port', '管道口', portCount,
+                         'color:var(--rm-pipe)') : '') +
+      (dotCount ? lgBtn('pipe', 'rm-lg-pipe', '管道', dotCount,
+                        'color:var(--rm-pipe)') : '') +
+      (byKind.exit ? lgBtn('exit', 'rm-lg-cross', '通道入口', byKind.exit,
+                           'color:var(--rm-exit)') : '') +
+      (byKind.den ? lgBtn('den', 'rm-lg-cross', '巢穴', byKind.den,
+                          'color:var(--rm-den)') : '') +
+      (byKind.creature ? lgBtn('creature', 'rm-lg-cross', '生物通道', byKind.creature,
+                               'color:var(--rm-creature)') : '') +
       '<span class="rm-hint">滚轮缩放 · 按住拖动 · 双击复位</span>';
 
-    var climbBtn = $('rm-climb-toggle');
-    if (climbBtn){
-      climbBtn.addEventListener('click', function(){
-        rmShowClimb = !rmShowClimb;
-        climbBtn.classList.toggle('on', rmShowClimb);
-        drawRoom();
-      });
-    }
+    /* 一个委托监听（V1.24 №3）：`onclick` 赋值而不是 addEventListener——
+       图例每次开卡都重建，addEventListener 会在同一个节点上越挂越多。 */
+    var lgBox = $('rm-legend');
+    if (lgBox) lgBox.onclick = function(ev){
+      var t = ev.target;
+      while (t && t !== lgBox && !(t.classList && t.classList.contains('rm-toggle'))) t = t.parentNode;
+      if (!t || t === lgBox) return;
+      var k = t.getAttribute('data-k') || (t.id === 'rm-climb-toggle' ? 'climb' : '');
+      if (!k || !(k in rmShow)) return;
+      rmShow[k] = !rmShow[k];
+      t.classList.toggle('on', rmShow[k]);
+      rmShowSave();
+      drawRoom();
+    };
 
     renderRoomSide(code, name);
     bindRoomCardOnce();
@@ -9508,22 +9826,27 @@ function parseSave(raw, onProgress){
 
     /* 可攀爬背景墙：只在"空的格子"上换底色（比空气暗一档，表示这面墙能爬）。
        解析层已经把实心格、以及被管道/十字占用的格子滤掉了。 */
-    if (rmShowClimb && rmMarks && rmMarks.climb.length){
+    if (rmShow.climb && rmMarks && rmMarks.climb.length){
       ctx.fillStyle = (cs.getPropertyValue('--rm-climb') || '').trim() || '#1e2a38';
       rmMarks.climb.forEach(function(p){ ctx.fillRect(p[0], p[1], 1.02, 1.02); });
     }
 
-    /* 特效层（W4-fx）：水 / 酸 / 沙 / 腐化。坐标与地形同为「tile、y 向下」，
+    /* 特效层（W4-fx）：水 / 酸 / 沙。坐标与地形同为「tile、y 向下」，
        所以直接按格填，不需要任何换算。
        水只铺在**空气格**上（岩壁是画布底色，铺上去会盖住地形），
-       沙从沙面往下铺满（沙本来就该埋住地面），腐化按圆画。 */
+       沙从沙面往下铺满（沙本来就该埋住地面）。
+       腐化不画（V1.24 №10），见下面水/沙之后的说明。 */
     var fx = rmData && rmData.fx;
     if (fx){
       var fxc = function(k, d){
         return (cs.getPropertyValue('--rm-' + k) || '').trim() || d;
       };
-      var waterC = fxc('water', '#3f86c4'), acidC = fxc('acid', '#8fc63d');
-      var sandC = fxc('sand', '#d8bf86'), corrC = fxc('corrupt', '#9a4fc4');
+      /* 水色单一真源（V1.24 №1）：`--rm-water`（房间卡自己的调色板）→ `--rg-water`
+         （区域地图色卡）→ 兜底。三处兜底值统一成 `#5089D9`（地图 `PALETTE.water`），
+         以前房间卡是 `#3f86c4`，同一间房两个视图颜色不一样。 */
+      var waterC = fxc('water', (cs.getPropertyValue('--rg-water') || '').trim() || '#5089D9');
+      var acidC = fxc('acid', (cs.getPropertyValue('--rg-acid') || '').trim() || '#8FC63D');
+      var sandC = fxc('sand', '#d8bf86');
       var fxW = fx.w || rmData.w, fxH = fx.h || rmData.h;
 
       /* 沙：沙面折线 + 两个底角 = 一块面。**铺满整个宽度**（沙把地面和岩壁一起埋住），
@@ -9563,22 +9886,16 @@ function parseSave(raw, onProgress){
           });
           ctx.globalAlpha = 1;
         };
-        if (fw.band && fw.band[1] - fw.band[0] > 0.35) paint(fw.band[0], fw.band[1], 0.45);
-        if (fw.full && fw.full[1] - fw.full[0] > 0.02) paint(fw.full[0], fw.full[1], 0.88);
+        /* 满水 / 涨落带两档透明度（V1.24 №11）：必须与 `core/regmap/svg.py` 的
+           `WATER_OPACITY` / `BAND_OPACITY` 一致，否则同一间房两个视图水色不同。
+           0.62 是为了让**水下的结构**透得出来（α 越高结构权重越低），不是随手调的。 */
+        if (fw.band && fw.band[1] - fw.band[0] > 0.35) paint(fw.band[0], fw.band[1], 0.32);
+        if (fw.full && fw.full[1] - fw.full[0] > 0.02) paint(fw.full[0], fw.full[1], 0.62);
       }
 
-      /* 腐化：圆斑（压在地形上，岩壁也算——它本来就长在墙上） */
-      if (fx.corrupt && fx.corrupt.length){
-        ctx.fillStyle = corrC;
-        ctx.globalAlpha = 0.5;
-        ctx.beginPath();
-        fx.corrupt.forEach(function(c){
-          ctx.moveTo(c[0] + c[2], c[1]);
-          ctx.arc(c[0], c[1], c[2], 0, Math.PI * 2);
-        });
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
+      /* 腐化（`fx.corrupt`）**不画**：V1.24 №10 —— 配色项与 `--rm-corrupt` 早就删了，
+         这段渲染却漏着，于是永远用兜底紫 `#9a4fc4` 在房间卡上糊两个大圆。
+         区域地图侧 V1.18 已经下线，现在两边一致：只删渲染，数据留在 region_data 里备查。 */
     }
 
     /* 实机图压在矢量层上：位图自带天空填色、是不透明的，盖住就完事。
@@ -9617,7 +9934,7 @@ function parseSave(raw, onProgress){
     var pipeC = (cs.getPropertyValue('--rm-pipe') || '').trim() || '#7d8896';
 
     /* 管道路线：每格一个方块，连续几格看起来就是虚线 */
-    if (rmMarks && rmMarks.dots.length){
+    if (rmShow.pipe && rmMarks && rmMarks.dots.length){
       var DOT = 0.29;
       ctx.fillStyle = pipeC;
       rmMarks.dots.forEach(function(p){
@@ -9626,7 +9943,7 @@ function parseSave(raw, onProgress){
     }
 
     /* 管道口：T 形，横条贴「外缘」、竖条朝同段管道内部 */
-    if (rmMarks && rmMarks.ports.length){
+    if (rmShow.port && rmMarks && rmMarks.ports.length){
       ctx.fillStyle = pipeC;
       rmMarks.ports.forEach(function(p){
         var rr = portRects(p[0], p[1], p[2], p[3]);
@@ -9648,6 +9965,7 @@ function parseSave(raw, onProgress){
       };
       var hot = (rmHoverExit >= 0) ? rmExitLinks[rmHoverExit] : null;
       ['exit', 'den', 'creature'].forEach(function(kind){
+        if (!rmShow[kind]) return;          /* 图例开关（V1.24 №3） */
         var list = rmMarks.marks.filter(function(m){ return m[2] === kind; });
         if (!list.length) return;
         var dim = (kind === 'exit' && hot && hot.ok);
@@ -9670,7 +9988,7 @@ function parseSave(raw, onProgress){
     }
 
     /* 杆子画在最上层：格中心一条细线，屏幕宽度至少 1px，放大后不变粗 */
-    if (rmMarks && (rmMarks.v.length || rmMarks.h.length)){
+    if (rmShow.beam && rmMarks && (rmMarks.v.length || rmMarks.h.length)){
       var beamC = (cs.getPropertyValue('--rm-beam') || '').trim() || '#f2c66d';
       var lw = Math.max(1, s * 0.11) / s;
       ctx.strokeStyle = beamC;
@@ -10035,9 +10353,14 @@ function parseSave(raw, onProgress){
         if (cfg.ui.regmapCurve && typeof cfg.ui.regmapCurve === 'object') state.regmapCurve = cfg.ui.regmapCurve;
         if (typeof cfg.ui.regmapEngine === 'string') state.regmapEngine = cfg.ui.regmapEngine;
         if (cfg.ui.regmapAnno && typeof cfg.ui.regmapAnno === 'object') state.regmapAnno = cfg.ui.regmapAnno;
+        if (cfg.ui.regmapBgOverride && typeof cfg.ui.regmapBgOverride === 'object') state.regmapBgOverride = cfg.ui.regmapBgOverride;
         if (cfg.ui.roomExcluded && typeof cfg.ui.roomExcluded === 'object') state.roomExcluded = cfg.ui.roomExcluded;
         if (typeof cfg.ui.roomStrict === 'boolean') state.roomStrict = cfg.ui.roomStrict;
         if (typeof cfg.ui.roomCardFull === 'boolean') state.roomCardFull = cfg.ui.roomCardFull;
+        if (cfg.ui.roomCardMarks && typeof cfg.ui.roomCardMarks === 'object'){
+          state.roomCardMarks = cfg.ui.roomCardMarks;
+          rmShowApply();
+        }
         if (cfg.ui.roomCardStyle === 'live' || cfg.ui.roomCardStyle === 'vector'){
           state.roomCardStyle = cfg.ui.roomCardStyle;
         }
@@ -10341,7 +10664,8 @@ function parseSave(raw, onProgress){
           info.markKinds[m[2]] = (info.markKinds[m[2]] || 0) + 1;
         });
         info.climb = rmMarks ? rmMarks.climb.length : 0;
-        info.climbShown = rmShowClimb;
+        info.climbShown = rmShow.climb;
+        info.marksShown = rmShow;
         info.portDirs = rmMarks ? rmMarks.ports.slice(0, 12) : [];
       }
       info.sub = $('rm-sub') ? $('rm-sub').textContent : '';

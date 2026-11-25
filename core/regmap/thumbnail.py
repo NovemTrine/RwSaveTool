@@ -98,7 +98,8 @@ def runs(rows, mark="1"):
 # 哪里能爬。这些在原版里是**一格一格的编号**，压进二进制就没了。
 # 这里把它们抽成一张独立的稀疏层，作息规则：
 #   x 出口(4) > d 巢穴(5) > k 生物通道(9) > p 管道(3) > b 杆子(1/2) > c 可攀爬(6) > s 斜面(2..15)
-# 一格挤多个时按上面这条取——**物体先于面**：x/d/k/p/b 是实体，c/s 是面，面让位于实体。
+# 这条**只给旧接口 `over_grid()`（一格一个字符）用**。真正的载荷走位掩码（见下），
+# 一格可以同时是 `b` 和 `c`——V1.25 №14 起杆子不再把底下的面顶掉。
 # 2026-11-21 修：原来 c 排在 b 前面，而杆子本来就贴在可攀爬墙面上，同格 `b+c` 极多
 # （HI 2081 格、UW 3567 格），杆子被整根吞掉——比纯 b 格（2075）还多，等于一半以上从没画出来。
 
@@ -115,29 +116,73 @@ _OVER_RANK = {k: i for i, k in enumerate(OVER_PRIORITY)}
 #   空气 → 可攀爬背景(c) → 实心墙(solid) → 斜面(s) → 管道/出口/巢穴/生物通道/杆子
 MAP_KINDS = ("x", "d", "k", "p", "c", "b", "B", "s")
 
+# 位掩码（V1.24 №5）：一格可以**同时**属于多个 kind。
+# 为什么必须这样：竖杆(1) 与横杆(2) 在同一格是常见事（V1.14 实测 5.6% 的格子），
+# 以前一格只存一个字符、按优先级取，横杆在那些格上就凭空缺一格 → 杆子断开。
+OVER_BITS = {k: 1 << i for i, k in enumerate(MAP_KINDS)}
+# 「符号」与「面」互斥：一格既有符号（出口/巢穴/生物通道/管道）又有斜面/可攀爬背景时
+# 只留符号——它们占整格，面让位。
+# 符号之间**不再互斥**——这正是 №5 要的 b+B 同格。
+# V1.25 №14：**杆子（b/B）不再是"符号"**。杆子是一条 1/3 格宽的细条，压不住整格面积，
+# 它底下的结构色/斜面必须留着（否则杆子在缩略图里看着像"与区域背景同色的一块"——
+# 主人 2026-11-25 报的就是这个）。房间卡那边 `room_geo._structure()` 的 occupied 本来
+# 就不含 1/2，所以两视图从这一版开始才真正同构。
+_SYMBOL_BITS = sum(OVER_BITS[k] for k in ("x", "d", "k", "p"))
+_FACE_BITS = sum(OVER_BITS[k] for k in ("c", "s"))
 
-def over_grid(room):
-    """把 `room.objs` 与斜面摊成一格一个字符的覆盖网格（与 `cells` 同一个下标空间）。"""
+
+def _settle(mask: int) -> int:
+    """一格的多 kind 掩码 → 消歧后的掩码（符号压面；面内部 `c` 压 `s`；杆子不压面）。"""
+    if mask & _SYMBOL_BITS:
+        mask &= ~_FACE_BITS
+    elif mask & OVER_BITS["c"]:
+        mask &= ~OVER_BITS["s"]
+    return mask
+
+
+def over_mask_grid(room):
+    """把 `room.objs` 与斜面摊成「一格一个位掩码」的覆盖网格（下标空间同 `cells`）。"""
     w, h, cells = room.w, room.h, room.cells
-    grid = ["0"] * (w * h)
+    grid = [0] * (w * h)
     # 先铺斜面：值 2..15 是斜面/局部，0 空气、1 满格实心
+    sbit = OVER_BITS["s"]
     for i in range(min(len(cells), len(grid))):
         c = cells[i]
         if c != "0" and c != "1":
-            grid[i] = "s"
+            grid[i] = sbit
     objs = room.objs or {}
     for (x, y), codes in objs.items():
         idx = y * w + x
         if idx < 0 or idx >= len(grid):
             continue
-        best = grid[idx]
+        bits = grid[idx]
         for code in codes:
             k = OVER_OF.get(code)
             if k is None:
                 continue
-            if best == "0" or _OVER_RANK[k] < _OVER_RANK.get(best, 99):
-                best = k
-        grid[idx] = best
+            bits |= OVER_BITS[k]
+        grid[idx] = _settle(bits)
+    return grid
+
+
+def over_grid(room):
+    """旧接口（`build/check_regmap_color.py` 还在用）：一格一个字符，按优先级取最高类。
+
+    №5 之后载荷走 `over_mask_grid`（一格多 kind），这里只保留给旧脚本，
+    **不要**拿它做新的判断——它会丢掉 b/B 同格的信息。
+    """
+    grid = [0] * (room.w * room.h)
+    mask = over_mask_grid(room)
+    for i, bits in enumerate(mask):
+        if not bits:
+            continue
+        best, best_rank = "0", 99
+        for k in MAP_KINDS:
+            if bits & OVER_BITS[k]:
+                r = _OVER_RANK.get(k, 99)
+                if r < best_rank:
+                    best, best_rank = k, r
+        grid[i] = best
     return grid
 
 
@@ -159,15 +204,16 @@ def crop_size(room, bbox=None):
     return 0, 0, w, h
 
 
-def to_over_rows(room, tw, th, y_flip=False, bbox=None):
-    """覆盖层的缩略行。**块映射必须与 `to_rows` 完全一致**（改一处要同时改两处），
-    否则覆盖层会和地形错位半格。
+def to_over_mask_rows(room, tw, th, y_flip=False, bbox=None):
+    """覆盖层的缩略**掩码**行（`th` 行 × `tw` 列，每格一个位掩码）。**块映射必须与
+    `to_rows` 完全一致**（改一处要同时改两处），否则覆盖层会和地形错位半格。
 
-    与地形不同，这里不按占比阈值判：覆盖物本来就是一条线，取样块里只要出现就画，
-    取块内**优先级最高**的那个字符。
+    №5 之前：块内取"优先级最高的那个字符"——一个块里有竖杆又有横杆时只能留一个，
+    两个 2×2 源格各占一半的块就会随机丢一半。现在块内**按位或**：块里出现过的 kind
+    全部保留，杆子在缩略层才不会因为下采样被"掐断"。
     """
     w, h = room.w, room.h
-    grid = over_grid(room)
+    grid = over_mask_grid(room)
     bx0, by0, bw, bh = crop_size(room, bbox)
     rows = []
     for oy in range(th):
@@ -183,24 +229,64 @@ def to_over_rows(room, tw, th, y_flip=False, bbox=None):
         for ox in range(tw):
             x0 = min(bw - 1, ox * bw // tw)
             x1 = min(bw, max(x0 + 1, (ox + 1) * bw // tw))
-            best = "0"
+            acc = 0
             for y in range(ya, yb):
                 base = (by0 + y) * w + bx0
                 for x in range(x0, x1):
-                    c = grid[base + x]
-                    if c != "0" and (best == "0" or _OVER_RANK.get(c, 99) < _OVER_RANK.get(best, 99)):
-                        best = c
-            line.append(best)
-        rows.append("".join(line))
+                    acc |= grid[base + x]
+            line.append(_settle(acc))
+        rows.append(line)
     return rows
 
 
+def to_over_rows(room, tw, th, y_flip=False, bbox=None):
+    """旧接口：掩码行 → 字符行（按优先级取最高类）。只给旧脚本/调试用。"""
+    rows = to_over_mask_rows(room, tw, th, y_flip, bbox)
+    out = []
+    for line in rows:
+        chars = []
+        for bits in line:
+            if not bits:
+                chars.append("0")
+                continue
+            best, best_rank = "0", 99
+            for k in MAP_KINDS:
+                if bits & OVER_BITS[k]:
+                    r = _OVER_RANK.get(k, 99)
+                    if r < best_rank:
+                        best, best_rank = k, r
+            chars.append(best)
+        out.append("".join(chars))
+    return out
+
+
+def _mask_runs(rows, bit):
+    """位掩码行 → `[(y, x0, x1), …]`（只要该位为 1 的连续格）。"""
+    out = []
+    for y, line in enumerate(rows):
+        x = 0
+        n = len(line)
+        while x < n:
+            if not (line[x] & bit):
+                x += 1
+                continue
+            x0 = x
+            while x < n and (line[x] & bit):
+                x += 1
+            out.append((y, x0, x))
+    return out
+
+
 def over_runs(room, tw, th, y_flip=False, bbox=None):
-    """→ {"x": [[y,x0,x1],…], "p": [...], …}，只保留 `MAP_KINDS` 里真的出现过的类。"""
-    rows = to_over_rows(room, tw, th, y_flip, bbox)
+    """→ {"x": [[y,x0,x1],…], "p": [...], …}，只保留 `MAP_KINDS` 里真的出现过的类。
+
+    **每个 kind 各自扫游程**（№5）：同一格可以同时出现在 `b` 和 `B` 的游程里，
+    这正是"一格多 kind"落到载荷层的表现。对外结构没变，读 `over` 的老代码照常工作。
+    """
+    rows = to_over_mask_rows(room, tw, th, y_flip, bbox)
     out = {}
     for kind in MAP_KINDS:
-        seg = runs(rows, kind)
+        seg = _mask_runs(rows, OVER_BITS[kind])
         if seg:
             out[kind] = [list(s) for s in seg]
     return out

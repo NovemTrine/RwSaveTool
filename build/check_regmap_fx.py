@@ -9,7 +9,7 @@
     * 沙面折线必须 x 递增（渲染端就是按 x 插值铺面的）
 
 WebView 部分（`--shot`）：
-    * 打开房间卡，读 canvas 像素，确认能看到水 / 沙 / 腐化的颜色
+    * 打开房间卡，读 canvas 像素，确认能看到水 / 沙的颜色（腐化 V1.24 №10 已下线）
     * 顺手把 canvas 导出成 PNG 存到 `build/_shots/page/room_fx_*.png`，方便人眼复核
 """
 
@@ -19,6 +19,7 @@ import base64
 import json
 import math
 import os
+import re
 import sys
 import time
 
@@ -90,7 +91,11 @@ def audit_region(code: str) -> dict:
 
 
 def verify_no_corrupt() -> None:
-    """腐化必须彻底不上屏：色项、SVG 元素、房间卡都不许再有。"""
+    """腐化必须彻底不上屏：色项、地图 SVG、房间卡回包、前端源码都不许再有。
+
+    V1.24 №10 补了后两条——之前只守地图侧，房间卡那段画圆代码漏了整整两个版本，
+    一直用兜底紫 `#9a4fc4` 往房间里糊大圆（截图采样：叠黑 = `#4C2961`）。
+    """
     from core.regmap import svg as regmap_svg
     expect("corrupt" not in regmap_svg.PALETTE, "PALETTE 里还有 corrupt")
     from core.regmap import adapter
@@ -101,6 +106,63 @@ def verify_no_corrupt() -> None:
         expect("fx-corr" not in body, "%s 的 SVG 里还有腐化圆" % code)
         expect("rg-corrupt" not in body, "%s 的 SVG 里还有 --rg-corrupt" % code)
         print("  %-4s 腐化数据仍有 %3d 间，SVG 里 0 个圆（预期）" % (code, has))
+
+    # 房间卡侧：数据照旧生成，但 `bridge` 不许回传（回传了前端就会画）
+    from core.bridge import Api
+    api = Api()
+    for code, room in (CORRUPT_ROOM, ("HI", "HI_W05")):
+        geo = api.room_geometry(code, room)
+        if not geo.get("ok"):
+            print("  %-4s %s 跳过（%s）" % (code, room, geo.get("error")))
+            continue
+        got = geo.get("fx") or {}
+        expect("corrupt" not in got,
+               "%s/%s 的 room_geometry 回包里还有 fx.corrupt" % (code, room))
+        print("  %-4s %-9s 房间卡回包 fx 键：%s（无 corrupt 预期）"
+              % (code, room, sorted(got) or "空"))
+
+    # 前端源码：画圆那段删干净（只查**调用点**，注释里提到名字不算——注释里确实写着
+    # "配色项与 --rm-corrupt 早就删了"，所以这里查的是带冒号的 CSS 声明与 fxc 调用）
+    try:
+        html = open(os.path.join(ROOT, "ui", "rw_gui.html"), encoding="utf-8").read()
+    except OSError:
+        html = ""
+    expect("fxc('corrupt'" not in html, "ui/rw_gui.html 里还有 fxc('corrupt') 取色")
+    expect("--rm-corrupt:" not in html, "ui/rw_gui.html 的 CSS 里还有 --rm-corrupt 声明")
+
+
+def verify_water_alpha() -> None:
+    """水的两档透明度必须是「同一条真理」：后端常量 == 房间卡字面量 == 出图里的值。
+
+    V1.24 №11 起，这个数就是**「水下结构有多深」的唯一杠杆**（水半透明盖在 `c` 上，
+    `(1-α)` 才是结构的权重）。所以它不能是两处各写一遍的魔数——房间卡那份对不上，
+    同一间房两个视图的水色就会不一样，而且改了一边看不出问题。
+    """
+    from core.regmap import svg as regmap_svg
+    full, band = regmap_svg.WATER_OPACITY, regmap_svg.BAND_OPACITY
+    print("  后端常量：满水 %.2f / 涨落带 %.2f" % (full, band))
+
+    lay = adapter.build("SL")
+    body = regmap_svg.build_svg(lay, width=1200)["svg"]
+    expect(("fill-opacity:%.2f" % full) in body,
+           "SVG 里找不到 fill-opacity:%.2f（水没按 WATER_OPACITY 画）" % full)
+    expect("fill-opacity:0.88" not in body, "SVG 里还有旧的水透明度 0.88")
+
+    try:
+        html = open(os.path.join(ROOT, "ui", "rw_gui.html"), encoding="utf-8").read()
+    except OSError:
+        html = ""
+    m_full = re.search(r"paint\(fw\.full\[0\], fw\.full\[1\], ([\d.]+)\)", html)
+    m_band = re.search(r"paint\(fw\.band\[0\], fw\.band\[1\], ([\d.]+)\)", html)
+    expect(m_full is not None, "房间卡里找不到 paint(fw.full…) 的透明度")
+    expect(m_band is not None, "房间卡里找不到 paint(fw.band…) 的透明度")
+    if m_full and m_band:
+        got_full, got_band = float(m_full.group(1)), float(m_band.group(1))
+        print("  房间卡字面量：满水 %.2f / 涨落带 %.2f" % (got_full, got_band))
+        expect(abs(got_full - full) < 1e-6,
+               "房间卡满水 %.2f ≠ 后端 WATER_OPACITY %.2f" % (got_full, full))
+        expect(abs(got_band - band) < 1e-6,
+               "房间卡涨落带 %.2f ≠ 后端 BAND_OPACITY %.2f" % (got_band, band))
 
 
 def pixel_probe(window, code: str, room: str, kind: str) -> dict:
@@ -211,6 +273,9 @@ def main() -> int:
 
     print("\n腐化下线检查：")
     verify_no_corrupt()
+
+    print("\n水透明度一致性：")
+    verify_water_alpha()
 
     if "--shot" in sys.argv:
         print("\n房间卡像素：")

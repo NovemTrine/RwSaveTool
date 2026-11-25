@@ -417,7 +417,11 @@ def _components(names, adjacent):
                 continue
             seen.add(cur)
             comp.append(cur)
-            stack.extend(adj[cur] - seen)
+            # 必须 `sorted`（V1.24 修）：`adj[cur] - seen` 是**字符串集合**，迭代顺序由
+            # `PYTHONHASHSEED` 决定 —— 同一个进程里稳定，**进程重启就变**，
+            # 于是"关掉工具再打开，同一个区的排布换了"。zq 引擎那边（`engine_zq.py:513`）
+            # 一直是排过序的，这里漏了。排序只影响访问先后，不改变连通性。
+            stack.extend(sorted(adj[cur] - seen))
         comps.append(comp)
     comps.sort(key=len, reverse=True)
     return comps, adj
@@ -429,7 +433,6 @@ def build(rooms, opts=None):
     o.update(config.defaults())
     o.update(opts or {})
 
-    rooms = [r for r in rooms if not is_gate(r.name)]
     if not rooms:
         return {"nodes": [], "edges": [], "stats": {"rooms": 0}}
 
@@ -633,6 +636,7 @@ def build(rooms, opts=None):
             "room": r,
             "isolated": nm in isolated,
             "sub": r.sub,
+            "gate": is_gate(nm),          # 大门：画法不同（V1.24），也参与图例/计数
         })
 
     # ---- 连线端点：先算（用最终坐标），再做平移 ----

@@ -54,10 +54,27 @@ ANNO_DEFAULTS = {"sub": 1, "labels": 1}
 # 子区域淡色的不透明度：只用来「分块」，不能盖住地形。
 SUB_ALPHA = 0.18
 
+# 区域地图的杆子色：**固定** `PALETTE["b"] = #374D5D`，与房间卡那条深色细线同一个颜色。
+# V1.24 №13 曾改成「该子区域结构色再压一档」，V1.25 №14 已回滚——主人 2026-11-25 定案：
+# 杆子本身颜色没问题，出问题的是杆子格的**底色**（`thumbnail._settle` 把 `c` 剥掉了）。
+# 底色修好后，固定深色压在结构色上反而更清楚，两视图也才一致。
+
+# 水的两档不透明度（V1.24 №11）。**这是「水下结构有多深」的唯一杠杆**，不是随手调的：
+#   水半透明盖在 `c` 上，水下「空气 vs 结构」的差别 = (1-α)·(air − c)。
+#   α=0.88 → 结构只剩 12% 权重，ΔE76 1.3–2.7（水下一片平，所以当初才会误以为要压暗 `c`）；
+#   α=0.62 → 38% 权重，ΔE76 4.3–8.2（结构块在水下能看出形状），水本身只从 `#5489D3` 变 `#5E89C5`。
+# 房间卡 `drawRoom` 的 `paint(..., alpha)` 必须跟这两个数**完全一致**（同一个房间两个视图）。
+WATER_OPACITY = 0.62
+BAND_OPACITY = 0.32        # 涨落带淡一档；原比例 0.45/0.88 ≈ 51%，这里 0.32/0.62 ≈ 52%
+
 # 叠放顺序（下 → 上）；连线单独在最底，门点在最上。
 # **面在前、实体在后**：`c`（可攀爬背景）/`s`（斜面）是面，`b`/`p`/`x`/`d`/`k` 是实体，
 # 实体必须压在面上面，否则细杆子会被背景块吞掉（与 `thumbnail.OVER_PRIORITY` 同一个道理）。
-DRAW_ORDER = ("c", "s", "b", "B", "p", "x", "d", "k")
+# ⚠️ `c` 虽然还留在这里（外部若按元组遍历能拿到它），但**实际不参与这个循环**：
+# V1.24 №1 起它在水之前单独画（见 `build_svg` 的 ①②③ 三段），否则结构色会把水切断。
+# V1.24 №5：`p`（白管）挪到 `b`/`B` **之前** —— 杆子是玩家真正抓的那根，得压在白管上面，
+# 否则拐角处杆子被管道截断一截，看着像"没接上"。
+DRAW_ORDER = ("c", "s", "p", "b", "B", "x", "d", "k")
 
 # 轴对齐矩形的 path 走这条 CSS：关掉抗锯齿，消掉子路径共边时透下层色的细缝。
 # 2026-11-21：放大十几倍后实心块里每块一条亮横线，就是共边抗锯齿造成的。
@@ -215,17 +232,57 @@ def _collapse(grid, w, h, gx, gy):
     return out, nw, nh
 
 
+def _orient(grid, w, h, vertical):
+    """标记「属于长度 ≥2 的竖向/横向段」的格子。
+
+    绘制那侧的极大段判定与这里**逐字一致**（同一套 `while` 扫描），否则"这一格是
+    横条成员还是竖条成员"会对不上，端点缩进就会缩错地方。
+    """
+    flag = [bytearray(w) for _ in range(h)]
+    if vertical:
+        for x in range(w):
+            y = 0
+            while y < h:
+                if not grid[y][x]:
+                    y += 1
+                    continue
+                y0 = y
+                while y < h and grid[y][x]:
+                    y += 1
+                if y - y0 >= 2:
+                    for yy in range(y0, y):
+                        flag[yy][x] = 1
+    else:
+        for y in range(h):
+            row = grid[y]
+            x = 0
+            while x < w:
+                if not row[x]:
+                    x += 1
+                    continue
+                x0 = x
+                while x < w and row[x]:
+                    x += 1
+                if x - x0 >= 2:
+                    for xx in range(x0, x):
+                        flag[y][xx] = 1
+    return flag
+
+
 def _bar_path(segs, cw, ch, ox, oy, kind="b", scale=1.0, cells=None):
     """杆子/管道 → **格内缩窄的纯色矩形**（宽/高取 1/3 格，直角，不描边）。
 
-    四条口径（2026-11-21 三次修订后定稿）：
+    五条口径（2026-11-21 三次修订 + 2026-11-24 V1.24 №2/№5）：
 
     · **A**：按整格铺会把 1 格宽的杆子画粗 3–4 倍（源数据逐格标注，游戏里约 1/4 格），
       所以每条缩到 1/3 格 —— 还是纯色矩形、直角，只是不再铺满整格。
-    · **两向段（№3）**：把游程展开成格子，**横向极大段与纵向极大段都画**（都以格中心线为准）。
+    · **两向段**：把游程展开成格子，**横向极大段与纵向极大段都画**（都以格中心线为准）。
       只画"这一块的主方向"会导致拐角处断开——一格宽的 L 形，竖块只画竖条、横块只画横条，
       转角上那半格是空的，放大看就是"只有横线和竖线、拐不过弯"（主人 2026-11-21 报的现象）。
-      两向叠画之后，拐角自然合成 L，丁字/十字也是真实形状。
+    · **端点缩进（№2，2026-11-24）**：两向都铺满整格时，拐角格会被横竖各铺一次，并集就是
+      "＋"——而且往外多出**两个半格**（那半格并没有数据，是转角格剩下的部分）。
+      现在：一段的**端点格**如果同时属于另一方向的段，就只画到**格中心**。
+      拐角于是变成真正的 L（两条带在格心相交），直线杆子的端点仍铺到格边（长度不变）。
     · **先折回源格再判方向（`cells`）**：高清层显示格比源格细，一根 1 格厚的横管会被
       复制成 2–3 个显示行；照显示格判两向，就等于在**每一列**都看到一个"上下都有邻居"的
       十字，画出来是"横线上每隔一格一根竖刺"的梯子（主人 2026-11-21 夜报的现象）。
@@ -234,8 +291,11 @@ def _bar_path(segs, cw, ch, ox, oy, kind="b", scale=1.0, cells=None):
     · **不再纵向合并**：以前 `b` 会按 `(x0,x1)` 把整竖列粘成一块，粘完就丢掉"这一列中途
       有过横向分叉"的信息，两向段必须在格级判断。
 
-    只被某一段覆盖的格子不再补方块（早期按"长度为 1 的段"补，竖杆会画两遍，条目翻倍）。
-    真正孤立的格子（横竖都只有 1 格）才画中心 1/3 方块。
+    孤立格（横竖都只有 1 格）不再一律画中心小方块（№5）：只要四邻里有线格，就朝那个方向
+    伸出**半格臂**——单格的杆子才接得上邻居，也不会在"邻居段长度不足 2 被跳过"的地方留缝。
+
+    调用侧把 `b` 与 `B` 的游程**合并**后传进来（两者同色）：一格多 kind 之后，转角常常是
+    "一格 b + 一格 B"，拆开各自扫段就谁也连不上谁。
     """
     grid, w, h = _bar_grid(segs)
     if not w:
@@ -270,6 +330,11 @@ def _bar_path(segs, cw, ch, ox, oy, kind="b", scale=1.0, cells=None):
     xs = [g[0] * cw for g in gx] + [gx[-1][1] * cw]
     ys = [g[0] * ch for g in gy] + [gy[-1][1] * ch]
 
+    # 「这一格是横条成员 / 竖条成员」——端点缩进靠它判断，绝不靠"四邻都有"（那会把
+    # 高清层的假厚度也算进来，正好踩回 V1.17 的梯子坑）。
+    vs = _orient(grid, w, h, True)
+    hs = _orient(grid, w, h, False)
+
     # 横向极大段
     for y in range(h):
         row = grid[y]
@@ -283,9 +348,13 @@ def _bar_path(segs, cw, ch, ox, oy, kind="b", scale=1.0, cells=None):
                 x += 1
             if x - x0 < 2:
                 continue
-            ax = ox + xs[x0]
+            # 端点在竖条上 → 是拐角/丁字，止于格心；否则铺到格边（直线杆保持原长）
+            lx = (xs[x0] + xs[x0 + 1]) * 0.5 if vs[y][x0] else xs[x0]
+            rx = (xs[x - 1] + xs[x]) * 0.5 if vs[y][x - 1] else xs[x]
+            if rx - lx <= 0:
+                lx, rx = xs[x0], xs[x]
             ay = oy + (ys[y] + ys[y + 1]) * 0.5 - th3 * 0.5
-            out.append(_rect_d(ax, ay, xs[x] - xs[x0], th3))
+            out.append(_rect_d(ox + lx, ay, rx - lx, th3))
             c = cov[y]
             for i in range(x0, x):
                 c[i] = 1
@@ -302,20 +371,39 @@ def _bar_path(segs, cw, ch, ox, oy, kind="b", scale=1.0, cells=None):
                 y += 1
             if y - y0 < 2:
                 continue
+            ty = (ys[y0] + ys[y0 + 1]) * 0.5 if hs[y0][x] else ys[y0]
+            by = (ys[y - 1] + ys[y]) * 0.5 if hs[y - 1][x] else ys[y]
+            if by - ty <= 0:
+                ty, by = ys[y0], ys[y]
             ax = ox + (xs[x] + xs[x + 1]) * 0.5 - tw3 * 0.5
-            ay = oy + ys[y0]
-            out.append(_rect_d(ax, ay, tw3, ys[y] - ys[y0]))
+            out.append(_rect_d(ax, oy + ty, tw3, by - ty))
             for i in range(y0, y):
                 cov[i][x] = 1
 
-    # 真正孤立的格子
+    # 孤立格：朝有邻居的方向伸半格臂（四邻全空才画中心方块）
     for y in range(h):
         row, c = grid[y], cov[y]
         for x in range(w):
-            if row[x] and not c[x]:
-                ax = ox + (xs[x] + xs[x + 1]) * 0.5 - tw3 * 0.5
-                ay = oy + (ys[y] + ys[y + 1]) * 0.5 - th3 * 0.5
-                out.append(_rect_d(ax, ay, tw3, th3))
+            if not row[x] or c[x]:
+                continue
+            cx0, cx1 = xs[x], xs[x + 1]
+            cy0, cy1 = ys[y], ys[y + 1]
+            mx, my = (cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5
+            arm = False
+            if x > 0 and row[x - 1]:
+                out.append(_rect_d(ox + cx0, oy + my - th3 * 0.5, mx - cx0, th3))
+                arm = True
+            if x < w - 1 and row[x + 1]:
+                out.append(_rect_d(ox + mx, oy + my - th3 * 0.5, cx1 - mx, th3))
+                arm = True
+            if y > 0 and grid[y - 1][x]:
+                out.append(_rect_d(ox + mx - tw3 * 0.5, oy + cy0, tw3, my - cy0))
+                arm = True
+            if y < h - 1 and grid[y + 1][x]:
+                out.append(_rect_d(ox + mx - tw3 * 0.5, oy + my, tw3, cy1 - my))
+                arm = True
+            if not arm:
+                out.append(_rect_d(ox + mx - tw3 * 0.5, oy + my - th3 * 0.5, tw3, th3))
     return "".join(out)
 
 
@@ -486,14 +574,24 @@ def _scaler(box, px, py, pw, ph):
 
 
 def _fx_water(fx, px, py, pw, ph, th, box=None):
-    """水 / 酸液：**画在岩壁下面**（W4-fx，2026-11-21）。
+    """水 / 酸液：**画在背景结构之上、岩壁之下**（W4-fx；V1.24 №1 调层序）。
 
     一开始是画在地形之上的（wiki 那样把墙也蒙一层），但地图缩略只有 1–3 px 一格，
     蒙上之后整间房下半截糊成一块蓝、地形形状全丢。改成"水在墙下、底色之上"：
     空的地方是干净的蓝、岩壁仍是清晰的深色，缩略视图里一眼就能分出水位。
 
+    层级链（§2.4b，与房间卡 `drawRoom` 同构）：`air → c → water → solid → s`。
+    调用点因此**挪到了 `c` 之后**——原来水先画、`c` 后画，结构色把水切成一截一截。
+
     洞（`AirPocket` / `WaterCutoff`）用 `evenodd` 挖，不能拿底色盖——
     盖了会把洞里的地形一起抹掉。
+
+    **透明度就是「水下结构有多深」的唯一杠杆**（V1.24 №11）。水是半透明盖在 `c` 上的，
+    水下的「空气 vs 结构」差别 = `(1-α)·(air - c)`：
+      · α=0.88 → 结构只剩 12% 权重，ΔE76 只有 1.3–2.7（视觉上"水下一片平"）；
+      · α=0.62 → 38% 权重，ΔE76 4.3–8.2（结构块在水下能看出形状）。
+    再往下压水会发白（叠在空气上从 `#5489D3` 变 `#5E89C5`），所以停在 0.62。
+    涨落带（`band`）按同比例调淡：0.45 → 0.32（原比例 ≈51%）。
 
     `box`（W4）：节点矩形只覆盖有效区时，水位要按有效区换算，否则会整体偏移。
     """
@@ -519,10 +617,10 @@ def _fx_water(fx, px, py, pw, ph, th, box=None):
 
     (b0, b1) = water["band"]
     if b1 - b0 > 0.35:                     # 涨落带淡一档（不足 1/3 格看不见，省掉）
-        _rect(b0, b1, 0.45)
+        _rect(b0, b1, BAND_OPACITY)
     (f0, f1) = water["full"]
     if f1 - f0 > 0.02:
-        _rect(f0, f1, 0.72)
+        _rect(f0, f1, WATER_OPACITY)
     return out
 
 
@@ -632,6 +730,29 @@ def build_svg(layout, width=2400, pad=14, colors=None, labels=False, frames=Fals
         return pad + (v - y0) * s
 
     rects = {n["name"].upper(): (n["x"], n["y"], n["w"], n["h"]) for n in nodes}
+    node_by = {n["name"].upper(): n for n in nodes}
+
+    def _e_px(name, cell):
+        """门端 E（管道口格）→ 像素中心；没有数据/坐标越界就 None（调用方退回 `pa/pb`）。
+
+        **必须走 `_scaler(_eff_box(n))`**：房间矩形只覆盖有效区、还被非等比拉伸过，
+        直接按 `w/h` 缩放会偏半格到几格（缩略图是按 effBox 裁切后拉伸的）。
+        """
+        n = node_by.get(str(name).upper())
+        if not n or not cell:
+            return None
+        a, b = mx(n["x"]), my(n["y"])
+        try:
+            cx, cy = float(cell[0]), float(cell[1])
+        except (TypeError, ValueError, IndexError):
+            return None
+        box = _eff_box(n)
+        bx0, by0, bx1, by1 = box
+        # 格必须落在有效区里：越界说明这份缓存的 effBox 与数据不是同一代，别硬画
+        if not (bx0 - 0.5 <= cx <= bx1 + 1.5 and by0 - 0.5 <= cy <= by1 + 1.5):
+            return None
+        X, Y = _scaler(box, a, b, n["w"] * s, n["h"] * s)
+        return (X(cx + 0.5), Y(cy + 0.5))
     lw = link_width if link_width else max(1.2, s * 0.09)
     # `wire` 只留给旧调用方兼容（现在杆子走 `_bar_path`，宽高直接按格算，不再有 stroke-width）
     wire = float(wire) if wire else s / 3.0
@@ -663,6 +784,10 @@ def build_svg(layout, width=2400, pad=14, colors=None, labels=False, frames=Fals
             ".regmap-svg .fr{display:none;fill:none;stroke:var(--rg-seen,%s);stroke-width:1.2;"
             "stroke-opacity:.5;vector-effect:non-scaling-stroke}"
             ".regmap-svg .rm.seen .fr{display:block}"
+            # 大门（V1.24）：虚线框。颜色跟着「门点」走（`--rg-door`），不新开一个面板色，
+            # 这样换配色方案时门框与门点始终是一套。
+            ".regmap-svg .rm.gate .gt{fill:none;stroke:var(--rg-door,%s);stroke-width:1.3;"
+            "stroke-dasharray:3 2;stroke-opacity:.9;vector-effect:non-scaling-stroke}"
             ".regmap-svg .lb{fill:#93a4ad;paint-order:stroke;stroke:var(--rg-sheet,%s);"
             "stroke-width:2.5px}"
             # 标注（W4 / №2）：只剩子区域淡色底与子区域名。图标那套 `.an-p`/`.an-i`
@@ -673,8 +798,8 @@ def build_svg(layout, width=2400, pad=14, colors=None, labels=False, frames=Fals
             "stroke-opacity:.6;letter-spacing:.5px}"
             "%s"
             "</style>" % (th["sheet"], th["link"], lw, th["warn"], th["door"],
-                          th["door"], th["seen"], th["sheet"],
-                          th["anno"], th["sheet"], RECT_CSS))
+                          th["door"], th["seen"], th["door"],
+                          th["sheet"], th["anno"], th["sheet"], RECT_CSS))
 
     out.append('<rect x="0" y="0" width="%d" height="%d" style="fill:var(--rg-sheet,%s)"/>'
                % (w, h, th["sheet"]))
@@ -690,13 +815,16 @@ def build_svg(layout, width=2400, pad=14, colors=None, labels=False, frames=Fals
     inner = 0.5 if link_inner is None else float(link_inner)
     link_parts = []
     n_links = 0
-    for e in edges:
+    # 门端的两处落点：门点与连线**共用**同一对像素（V1.25 №15），否则线头会留在框上、
+    # 与移到管道口的门点脱开 1–5 格。没有 E 的一端仍用 `pa/pb`（框边界），与改前一致。
+    ends_px = [(_e_px(e["a"], e.get("e_a")) or (mx(e["pa"][0]), my(e["pa"][1])),
+                _e_px(e["b"], e.get("e_b")) or (mx(e["pb"][0]), my(e["pb"][1])))
+               for e in edges]
+    for e, (pa_px, pb_px) in zip(edges, ends_px):
         ra, rb = rect_px.get(e["a"].upper()), rect_px.get(e["b"].upper())
         if not ra or not rb:
             continue
-        segs = link_segments((mx(e["pa"][0]), my(e["pa"][1])),
-                             (mx(e["pb"][0]), my(e["pb"][1])),
-                             ra, rb, rect_list, curve, s, inner)
+        segs = link_segments(pa_px, pb_px, ra, rb, rect_list, curve, s, inner)
         warn = e.get("conflict") or e.get("route") == "unresolved"
         for (d, is_in) in segs:
             cls = "ln" + (" warn" if warn else "") + (" in" if is_in else "")
@@ -713,17 +841,25 @@ def build_svg(layout, width=2400, pad=14, colors=None, labels=False, frames=Fals
         cw = pw / max(1, n["thumbW"])
         ch = ph / max(1, n["thumbH"])
         name = n["name"]
-        cls = "rm" + (" iso" if n.get("isolated") else "")
+        gate = bool(n.get("gate"))
+        cls = "rm" + (" iso" if n.get("isolated") else "") + (" gate" if gate else "")
         # 底色按**这间房所在的子区域**下发：CSS 变量写在 `<g>` 的行内 style 上，
         # 下面的 `fill:var(--rg-air,…)` / `var(--rg-c,var(--rg-cg,…))` 自然继承，不用包层。
         # 取不到分组就用主体那组（`""`）；都没有就不写，落到 CSS 兜底。
         vs = ""
+        dsub = ""
         if use_region:
             g = rgroups.get(str(n.get("sub") or "")) or rgroups.get("")
             if g:
-                vs = ' style="--rg-air:%s;--rg-cg:%s"' % (g.get("air"), g.get("struct"))
-        out.append('<g class="%s" data-room="%s"%s><title>%s</title>'
-                   % (cls, _attr(name), vs, _text(name)))
+                vs = ' style="--rg-air:%s;--rg-cg:%s"' % (
+                    g.get("air"), g.get("struct"))
+                # `data-sub` = **生效的分组名**（找不到子区域时是 `""`，即主体）。
+                # 前端「背景取色」改色时按它直接改这些 `<g>` 的 CSS 变量（V1.24）：
+                # 不重取 SVG、不重算布局，改一个子区域的色只动它自己那几间房。
+                dsub = ' data-sub="%s"' % _attr(g.get("sub") or "")
+        out.append('<g class="%s" data-room="%s"%s%s><title>%s</title>'
+                   % (cls, _attr(name), dsub, vs,
+                      _text(name + (" · 大门" if gate else ""))))
         # 命中区：整块房间矩形。悬停/双击都认它（前端按 [data-room] 找）。
         # 顺便当**可通行底色**：每个缩略格非"实心"即"空气"，所以「矩形铺空气色 +
         # 实心游程压上去」与「逐行画空气游程」像素等价，但少一整层 path（省四到五成字节）。
@@ -747,10 +883,23 @@ def build_svg(layout, width=2400, pad=14, colors=None, labels=False, frames=Fals
             sub_boxes.setdefault(n["anno"]["sub"], []).append((px, py, pw, ph))
         out.append('<rect class="hit" x="%.2f" y="%.2f" width="%.2f" height="%.2f"/>'
                    % (px, py, pw, ph))
-        # 水/酸：底色之上、岩壁之下（见 `_fx_water`）
+        # ---- ① 背景结构（c）：**必须画在水之前**（V1.24 №1）----
+        # 房间卡那边（`drawRoom`）的顺序是「空气 → 斜面对… → 可攀爬背景墙 → 水」，
+        # 水是**盖在背景结构上**的；地图这边原来把 `c` 留在 `DRAW_ORDER` 里（水之后），
+        # 于是水被结构色切成一截一截。把 `c` 提上来、水紧跟其后，两个视图就同构了。
+        # 层级链（§2.4b）：air → c → water → solid → s。
+        segs_c = (n.get("over") or {}).get("c") or []
+        if segs_c:
+            # 背景结构有**两级**：`--rg-c` 是"用户/全局"意图，`--rg-cg` 是"这间房所在
+            # 子区域"的派生值。CSS 变量不能"取消"，所以外面那层优先、里面兜底：
+            # 用户没改 → `--rg-c` 不存在 → 落到分组值；用户改了 → 直接盖掉分组值。
+            out.append('<g class="rc"><path style="fill:var(--rg-c,var(--rg-cg,%s))" d="%s"/></g>'
+                       % (th["c"], _runs_path(segs_c, cw, ch, px, py)))
+        # ---- ② 水/酸：压在 空气 / 背景结构 之上、岩壁之下（见 `_fx_water`）----
         water_parts = _fx_water(n.get("fx"), px, py, pw, ph, th, box)
         if water_parts:
             out.extend(water_parts)
+        # ---- ③ 实心 / 沙 / 斜面 / 杆管 ----
         # 按 `DRAW_ORDER` 保序，但要分两种画法：
         #   · 面（solid / c / s / x / d / k）→ 矩形 path，进 `.rc` 组吃 `crispEdges`；
         #   · 线（p / b）→ 等宽 stroke，进 `.wl`；`crispEdges` 只该作用于矩形，
@@ -773,11 +922,19 @@ def build_svg(layout, width=2400, pad=14, colors=None, labels=False, frames=Fals
         if fx_parts:
             parts.extend(fx_parts)
         for kind in DRAW_ORDER:
+            if kind == "c":
+                continue                       # 已在 ① 画过（它必须在水之前）
             segs = (n.get("over") or {}).get(kind) or []
             if not segs:
                 continue
             if kind in BAR_KINDS:
+                if kind == "B":
+                    continue                   # 与 `b` 合并绘制（同色，且合并后拐角才连得上）
                 flush_rc()                     # 收掉上面的面，细条才不会被半截组盖住
+                if kind == "b":
+                    # 竖杆 + 横杆并成一张网：一格多 kind 之后，转角常是"一格 b + 一格 B"，
+                    # 拆开各自扫段就谁也连不上谁（V1.24 №5 的关键一步）。
+                    segs = list(segs) + list((n.get("over") or {}).get("B") or [])
                 # `cells` 只给杆/管：高清层显示格比源格细，1 格厚的杆会被复制成 2–3 个
                 # 显示行，不折回源格就会画成"每格一根竖刺"（见 `_bar_path`）。
                 cells = None
@@ -788,18 +945,17 @@ def build_svg(layout, width=2400, pad=14, colors=None, labels=False, frames=Fals
                     ck = "b" if kind == "B" else kind   # 横杆与竖杆同色，配色面板只认 --rg-b
                     parts.append('<path style="fill:var(--rg-%s,%s)" d="%s"/>'
                                  % (ck, th[ck], d))
-            elif kind == "c":
-                # 背景结构有**两级**：`--rg-c` 是"用户/全局"意图，`--rg-cg` 是"这间房所在
-                # 子区域"的派生值。CSS 变量不能"取消"，所以外面那层优先、里面兜底：
-                # 用户没改 → `--rg-c` 不存在 → 落到分组值；用户改了 → 直接盖掉分组值。
-                buf.append('<path style="fill:var(--rg-c,var(--rg-cg,%s))" d="%s"/>'
-                           % (th["c"], _runs_path(segs, cw, ch, px, py)))
             else:
                 buf.append('<path style="fill:var(--rg-%s,%s)" d="%s"/>'
                            % (kind, th[kind], _runs_path(segs, cw, ch, px, py)))
         flush_rc()
         if parts:
             out.append("".join(parts))
+        # 大门（V1.24）：虚线圈一下。门房也是真房间（有地形、能开卡），但尺寸小、
+        # 又贴在区域边界，不圈出来会被当成"图上掉了一格"。
+        if gate:
+            out.append('<rect class="gt" x="%.2f" y="%.2f" width="%.2f" height="%.2f"/>'
+                       % (px, py, pw, ph))
         # 已探索框：常驻但默认隐藏（CSS `display:none`），前端给房间加 `seen` 类才显形。
         # 画在内容之后，悬停的 `.hit` 描边仍压在它上面（hover 更亮更粗）。
         if seen_frames:
@@ -840,16 +996,20 @@ def build_svg(layout, width=2400, pad=14, colors=None, labels=False, frames=Fals
     if door:
         out.append('<g class="doors" style="fill:var(--rg-door,%s)">' % th["door"])
         dw = max(1.6, s * 0.45)
-        for e in edges:
-            for pt in (e["pa"], e["pb"]):
+        for (pa_px, pb_px) in ends_px:
+            for (x, y) in (pa_px, pb_px):
                 out.append('<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f"/>'
-                           % (mx(pt[0]) - dw * 0.5, my(pt[1]) - dw * 0.5, dw, dw))
+                           % (x - dw * 0.5, y - dw * 0.5, dw, dw))
         out.append("</g>")
 
     out.append("</svg>")
     text = "".join(out)
+    n_gate = sum(1 for n in nodes if n.get("gate"))
     return {"svg": text, "w": w, "h": h, "bytes": len(text.encode("utf-8")),
-            "rooms": len(nodes), "links": n_links, "annos": len(sub_boxes),
+            "rooms": len(nodes), "gates": n_gate, "links": n_links, "annos": len(sub_boxes),
+            # `region` = 是否按子区域给每间房下发了 `--rg-air/--rg-cg`（前端改色的前提）。
+            # 关掉时（色卡显式给了 `air`）房间上不会有内联变量，前端就别去改它们。
+            "region": bool(use_region),
             "scale": s}
 
 

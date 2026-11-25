@@ -66,8 +66,20 @@ _REGMA_RAW_MAX = 1
 
 # SVG 缓存 key 里带一个**渲染版本号**：改了画法（哪怕 key 的其他参数一个没动）就 +1，
 # 否则同一次会话里切回来还是旧图——内存缓存不落盘，但进程是长活的，用户会以为没生效。
-# 2 = V1.17（高清层：杆/管的假竖刺折回源格）；3 = V1.18（№2 删标注：图标/物件/业力门下线）。
-_REGMA_RENDER_V = 3
+# 2 = V1.17（高清层：杆/管的假竖刺折回源格）；3 = V1.18（№2 删标注：图标/物件/业力门下线）；
+# 4 = V1.24（№4 取色：row12 + TARGET_L 0.55 + 按区背景取色；opts.bg 也进 key）；
+# 5 = V1.24（№4 续：背景取色细到**每个子区域**，回包多带 `groups[]`/`data-sub`）；
+# 6 = V1.24（№1 水体层序：c 提到水之前、满水 0.72→0.88）；
+# 7 = V1.24（№1 续：背景结构派生 0.65/0.60 → 0.78/0.96，c 只比 air 深一档）；
+# 8 = V1.24（№2+№5：杆子端点缩进成 L 拐角、b/B 合并成一张网、载荷一格多 kind）；
+# 9 = V1.24（№9：背景结构派生 V 0.78 → 0.68，c 更暗一档）；
+# 10 = V1.24（№11：结构**回到 0.78**，水下深度改用水的 α 0.88 → 0.62 / 涨落带 0.45 → 0.32）；
+# 11 = V1.24（№6+№7：按来源 / 角色 / 严格口径筛房间，`opts.flt` 进 key）；
+# 12 = V1.24（№8 续：大门**画进区域图**，节点多 `gate` 标记、SVG 多 `.rm.gate`）；
+# 13 = V1.24（№13：杆子色不再固定，改成「该子区域结构色再压一档」`--rg-b`，逐房间下发）；
+# 14 = V1.25（№14：杆子格不再剥掉底下的 `c`/`s`，底色回到结构色；№13 的派生杆子色**已回滚**成固定色）；
+# 15 = V1.25（№15：门点从框边界改画在管道口 E 上，连线端点同步；布局与 `pa/pb` 不变）。
+_REGMA_RENDER_V = 15
 
 
 def _room_colors(code: str, geo: dict, region: dict | None) -> dict | None:
@@ -97,12 +109,132 @@ def _room_colors(code: str, geo: dict, region: dict | None) -> dict | None:
     return {"air": g.get("air"), "struct": g.get("struct"), "sub": want}
 
 
+def _room_karma(region: dict, name: str) -> list | None:
+    """这间房的业力门槛 `[左, 右]`（V1.24 №8 烘焙进 `rooms[].karma`）。
+
+    同一间房可能出现在多层里，只有官方层带 `karma`（模组补丁层没有）→ 任一层有就用它；
+    全都没有返回 `None`（模组门只能是「业力门（无数据）」）。
+    """
+    nm = str(name or "").upper()
+    for layer in (region or {}).get("layers") or []:
+        for r in layer.get("rooms") or []:
+            if str(r.get("name") or "").upper() != nm:
+                continue
+            karma = r.get("karma")
+            if isinstance(karma, list) and len(karma) >= 2:
+                try:
+                    return [int(karma[0]), int(karma[1])]
+                except (TypeError, ValueError):
+                    return None
+    return None
+
+
+# 只影响**配色**、不影响**几何**的 opts 键（V1.24）。
+# 这些键必须从布局缓存键里剔掉，否则"改个背景色"＝布局缓存作废＝重算 1–2 秒，
+# 而且重算会把地图重排（布局本来有不确定性，见 `engine_zq.align_pass` 的注释）。
+_COLOR_OPTS = frozenset(("bg",))
+
+
+def _layout_opts(opts: dict | None) -> dict:
+    """布局真正用到的参数：把纯配色的键剔掉（几何结果与它们无关）。"""
+    if not isinstance(opts, dict):
+        return {}
+    return {k: v for k, v in opts.items() if k not in _COLOR_OPTS}
+
+
 def _regmap_key(code: str, slugcat: str, opts: dict | None) -> str:
     # `_REGMA_RENDER_V` 也进 key：页面 F5 重载时 Python 进程还活着，内存缓存不会清，
     # 不带版本号就会出现"改了画法、页面上还是旧图"。
     return json.dumps({"c": str(code).upper(), "s": str(slugcat or "").upper(),
                        "o": opts or {}, "v": _REGMA_RENDER_V},
                       sort_keys=True, default=str)
+
+
+def _regmap_layout_key(code: str, slugcat: str, opts: dict | None) -> str:
+    """布局缓存键：**不含颜色**（V1.24）。`opts.bg` 变了不该重算几何。"""
+    return _regmap_key(code, slugcat, _layout_opts(opts))
+
+
+def _regmap_filters(code: str, slugcat: str) -> dict:
+    """№6/№7 的筛选口径——**后端读配置，不由前端传**。
+
+    - `off`：被熄灭的来源 id（没有登记的层一律当启用，与 `region_store._decorate` 同口径）；
+    - `role`：存档里的角色名，`model.my_slugcat_names()` 再归一；
+    - `strict`：`config.ui.roomStrict`（严格口径开关）；
+    - `ex`：`config.ui.roomExcluded[角色][区域]` 里手工剔掉的房间。
+
+    为什么不让前端传：`roomExcluded` 本来就在 `config.ui` 里、前端只是它的编辑器，
+    后端读同一份文件不会出现"界面剔了、地图没剔"。`opts` 只留筛选后的**结果签名**
+    （进缓存 key），这样改了来源/角色/严格，旧布局缓存自然作废。
+    """
+    from . import paths, sources
+    from .regmap import model as _model
+
+    enabled = sources.enabled_map()
+    off = sorted(k for k, v in enabled.items() if not v)
+    ui = (paths.load_config() or {}).get("ui") or {}
+    cat = _model.canon_slugcat(slugcat).upper()
+    bucket = ((ui.get("roomExcluded") or {}).get(cat) or {})
+    ex = bucket.get(str(code or "").upper()) or []
+    return {
+        "off": off,
+        "role": str(slugcat or ""),
+        "strict": bool(ui.get("roomStrict", True)),
+        "ex": sorted({str(n).strip().upper() for n in ex if str(n).strip()}),
+    }
+
+
+def _regmap_opts(code: str, slugcat: str, opts: dict | None) -> dict:
+    """把筛选口径叠进 `opts`（已带就不重复算：`regmap_svg` 会转手调 `regmap_map`）。"""
+    out = dict(opts or {})
+    if "flt" not in out:
+        out["flt"] = _regmap_filters(code, slugcat)
+    return out
+
+
+def _decorate_colors(cols: dict | None, opts: dict | None) -> dict:
+    """把「按区背景取色」（`opts.bg`）叠到配色表上，并标出每个组的自动值。
+
+    - **不改缓存里的原件**：布局/SVG 缓存里存的永远是 base（派生色）；
+      覆盖色在"取图这一刻"套用，所以改色不需要重算几何、也不需要让缓存失效。
+    - 每个组多两个字段：`auto` / `autoStruct`（派生色）。前端"还原"和「自动」预览
+      要用它——`air`/`struct` 可能已经被覆盖。
+
+    `opts.bg` 形态：`{"": 主体色, 子区域名: 色}`（旧形态单个 `"#hex"` 也认）。
+    """
+    from .regmap import colors as _colors
+
+    base = cols if isinstance(cols, dict) else {}
+    out = dict(base)
+    groups = []
+    for g in (base.get("groups") or []):
+        g2 = dict(g)
+        # 幂等：已经带 `auto` 的（上一次套过色的结果）不要再拿 `air` 去覆盖它，
+        # 否则"套两次"会把派生色弄丢，前端「自动/还原」就没颜色可回了。
+        g2["auto"] = g.get("auto") or g.get("air")
+        g2["autoStruct"] = g.get("autoStruct") or g.get("struct")
+        groups.append(g2)
+    out["groups"] = groups
+    bg = (opts or {}).get("bg") if isinstance(opts, dict) else None
+    if bg:
+        out = _colors.with_override(out, bg)     # 内部会 dict 复制，`auto*` 字段跟着走
+        # `with_override` 会把顶层 `air/struct` 设成主体那组；没覆盖时保持原值
+    if out.get("groups"):
+        head = next((g for g in out["groups"] if not g.get("sub")), out["groups"][0])
+        out["air"] = head.get("air")
+        out["struct"] = head.get("struct")
+    return out
+
+
+def _color_groups(cols: dict | None) -> list[dict]:
+    """回包里的精简配色表（前端建行 + 改色用）。"""
+    return [{"sub": g.get("sub") or "",
+             "air": g.get("air") or "",
+             "struct": g.get("struct") or "",
+             "auto": g.get("auto") or g.get("air") or "",
+             "autoStruct": g.get("autoStruct") or g.get("struct") or "",
+             "src": g.get("src") or ""}
+            for g in ((cols or {}).get("groups") or [])]
 
 
 def _regmap_public(result: dict) -> dict:
@@ -494,29 +626,39 @@ class Api:
         """这个区域能不能排布：房间数、缺地形数、无地图矩形数、可用战役。
 
         只读 `region_data`，不写任何东西；界面用它决定「直接画」还是「给提示」。
+        房间数按 №6/№7 筛完的口径报（`rooms_total` 是筛之前）。
         """
-        return regmap_adapter.probe(code, slugcat or "")
+        flt = _regmap_filters(code, slugcat)
+        return regmap_adapter.probe(code, slugcat or "", flt)
 
     def regmap_map(self, code: str, slugcat: str = "", opts: dict | None = None) -> dict:
         """算一张区域地图的几何布局，返回纯数据（节点 / 连线 / 统计）。
 
-        缓存键 = (区域, 战役, 参数)。命中时 `cached=True` 且通常 < 50 ms；
+        缓存键 = (区域, 战役, **几何参数**)。颜色类参数（`opts.bg`）**不进键**：
+        布局与配色解耦，改颜色只重算颜色（毫秒级），几何原样复用。
+        命中时 `cached=True` 且通常 < 50 ms；
         未命中时串行计算（`_regmap_gate`），最慢的区域约 4 s。
         """
-        key = _regmap_key(code, slugcat, opts)
+        opts = _regmap_opts(code, slugcat, opts)
+        key = _regmap_layout_key(code, slugcat, opts)
         hit = _regmap_cache.get(key)
         if hit is not None:
             _regmap_cache.move_to_end(key)
-            return dict(hit, cached=True, ms=0)
+            out = dict(hit, cached=True, ms=0)
+            out["colors"] = _decorate_colors(hit.get("colors"), opts)
+            return out
 
         with _regmap_gate:
             hit = _regmap_cache.get(key)          # 等锁期间可能已经有人算完
             if hit is not None:
                 _regmap_cache.move_to_end(key)
-                return dict(hit, cached=True, ms=0)
+                out = dict(hit, cached=True, ms=0)
+                out["colors"] = _decorate_colors(hit.get("colors"), opts)
+                return out
             t0 = time.time()
             try:
-                result = regmap_adapter.build(code, slugcat or "", opts or {})
+                # ⚠️ 只传几何参数：颜色进了布局，等于"换配色 = 重算几何"
+                result = regmap_adapter.build(code, slugcat or "", _layout_opts(opts))
             except FileNotFoundError as exc:
                 return {"ok": False, "error": "no_region", "detail": str(exc)}
             except ValueError as exc:
@@ -532,10 +674,10 @@ class Api:
             payload["ok"] = True
             payload["cached"] = False
             payload["ms"] = ms
-            _regmap_cache[key] = payload
+            _regmap_cache[key] = payload          # 缓存里存的是 **base 配色**（无覆盖）
             while len(_regmap_cache) > _REGMA_CACHE_MAX:
                 _regmap_cache.popitem(last=False)
-            return dict(payload)
+            return dict(payload, colors=_decorate_colors(payload.get("colors"), opts))
 
     def regmap_svg(self, code: str, slugcat: str = "", opts: dict | None = None,
                    width: int = 2400, labels: bool = False, density: int = 2,
@@ -563,6 +705,9 @@ class Api:
         """
         width = int(width or 2400)
         density = max(1, min(6, int(density or 2)))
+        # №6/№7 的筛选口径进 opts：它既要传给装配阶段，也要进缓存 key（换了来源/角色
+        # 必须拿到新图，不能命中上一套房间集合拼出来的 SVG）。
+        opts = _regmap_opts(code, slugcat, opts)
         cv = curve if isinstance(curve, dict) else {}
         av = None
         if isinstance(anno, dict):
@@ -583,7 +728,7 @@ class Api:
             _regmap_svg_cache.move_to_end(key)
             return dict(hit, cached=True)
 
-        mapkey = _regmap_key(code, slugcat, opts)
+        mapkey = _regmap_layout_key(code, slugcat, opts)
         raw = _regmap_raw.get(mapkey)
         if raw is None:
             # 先让它把布局算出来（顺带把带 room 的原件放进 `_regmap_raw`）；
@@ -596,6 +741,7 @@ class Api:
             res = None
 
         layout = None
+        from_raw = False
         if density != 2 and raw is not None:
             nodes = [dict(n) for n in raw["nodes"]]      # 浅拷贝：prepare 会改 runs/over
             try:
@@ -606,15 +752,26 @@ class Api:
                 # `colors` 必须一起带过来：不带的话高清层会落回 `PALETTE` 的兜底色
                 # （可通行变成 #8C97AF 那片灰蓝，而不是区域调色板提取色）——
                 # №4 的"子区域色当可通行底色"就只在默认层生效了，放大一看是另一套颜色。
+                # 注意 `raw["colors"]` 是 **base**，覆盖色要在下面统一套（V1.24）。
                 layout = {"nodes": nodes, "edges": raw["edges"], "stats": raw["stats"],
                           "colors": raw.get("colors")}
+                from_raw = True
 
         if layout is None:
             if res is None:
                 res = self.regmap_map(code, slugcat, opts)
                 if not res.get("ok"):
                     return res
-            layout = res
+            layout = res                          # ← 已经是套过色的，别套第二遍
+
+        # 覆盖色在**这一刻**套：布局/raw 里存的都是 base，所以同一份几何可以给
+        # 任意多个配色复用（改色不再触发重算，也不会重排）。
+        if from_raw:
+            layout = dict(layout, colors=_decorate_colors(layout.get("colors"), opts))
+        # 高清层是从 `_regmap_raw` 重铺的，那份 layout 里没有 region 元信息（筛掉几间房
+        # 之类），去布局缓存里捞——同一个 mapkey 的记录里带着。
+        region_meta = (layout.get("region") if not from_raw else
+                       (_regmap_cache.get(mapkey) or {}).get("region") or {})
 
         try:
             r = regmap_svg.build_svg(
@@ -624,9 +781,22 @@ class Api:
                 anno=anno if isinstance(anno, dict) else (True if anno else False))
         except Exception as exc:                   # noqa: BLE001 - 桥接层不抛
             return {"ok": False, "error": "svg_failed", "detail": str(exc)}
+        # 把本区的配色表带回去：前端「背景取色」按它生成"主体 + 每个子区域"一行；
+        # 而且没打开过的区前端 **不知道有哪些子区域**，只能靠这里回传。
+        # 每组带 `auto/autoStruct`（派生色）与 `air/struct`（当前生效值）：
+        # 前端改色/还原要在**不重新取图**的前提下自己算（见 `ui/rw_gui.html` 的 `applyBgDom`）。
+        cols = (layout or {}).get("colors") or {}
         payload = {"ok": True, "svg": r["svg"], "w": r["w"], "h": r["h"],
                    "bytes": r["bytes"], "rooms": r["rooms"], "links": r["links"],
-                   "annos": r.get("annos", 0),
+                   # 图上画了几座大门（V1.24：大门现在是图上的节点，`rooms` 里也含它们）
+                   "gates": r.get("gates", 0),
+                   "annos": r.get("annos", 0), "air": cols.get("air") or "",
+                   "struct": cols.get("struct") or "",
+                   "groups": _color_groups(cols),
+                   "regionColors": bool(r.get("region", True)),
+                   # №6/№7：筛掉了多少间、一共多少间（界面上给一句说明，不改画法）
+                   "dropped": (region_meta or {}).get("dropped") or {},
+                   "roomsTotal": (region_meta or {}).get("roomsTotal"),
                    "density": density, "cached": False, "ms": 0}
         _regmap_svg_cache[key] = payload
         while len(_regmap_svg_cache) > _REGMA_SVG_MAX:
@@ -706,8 +876,15 @@ class Api:
                 # 特效层（W4-fx）：房间卡与区域地图共用同一份遮罩，别各算一遍。
                 try:
                     from .regmap import fx as _regmap_fx
-                    geo["fx"] = _regmap_fx.room_fx_geom(geo.get("path") or "",
-                                                        geo.get("w"), geo.get("h"))
+                    fx = _regmap_fx.room_fx_geom(geo.get("path") or "",
+                                                 geo.get("w"), geo.get("h"))
+                    # V1.24 №10：腐化两端都不画了（配色项与 `--rm-corrupt` / `--rg-corrupt`
+                    # 早已删除），但前端那段画圆代码一直用兜底紫 `#9a4fc4` 糊在房间卡上。
+                    # 渲染已删；这里再把 `corrupt` 从回包剔掉，免得前端拿到"只生成不消费"的数据。
+                    # `fx` 是 `fx._CACHE` 里的**共享 dict**（区域地图也读它），必须拷贝后再删。
+                    if isinstance(fx, dict) and fx.get("corrupt"):
+                        fx = {k: v for k, v in fx.items() if k != "corrupt"}
+                    geo["fx"] = fx
                 except Exception:                  # noqa: BLE001 - 特效坏了不该影响地形
                     geo["fx"] = None
                 # 配色（V1.15 №4/№5）：房间卡与区域地图共用同一份提取色。
@@ -717,6 +894,12 @@ class Api:
                     geo["colors"] = _room_colors(code, geo, region)
                 except Exception:              # noqa: BLE001 - 配色坏了就用兜底
                     geo["colors"] = None
+                # 业力门门槛（V1.24 №8）：导入时烘焙进 `rooms[].karma`，房间卡只显示文字。
+                # 找不到就返回 `None`（模组门），界面写「业力门（无数据）」，不猜。
+                try:
+                    geo["karma"] = _room_karma(region, room)
+                except Exception:              # noqa: BLE001
+                    geo["karma"] = None
             return geo
         except room_geo.RoomGeoError as exc:
             return {"ok": False, "error": "unparsable", "detail": str(exc), "room": room}

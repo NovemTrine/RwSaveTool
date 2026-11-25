@@ -369,7 +369,13 @@ def _sand(placed: list, w: int, h: int):
 
 
 def _corrupt(placed: list, w: int, h: int):
-    """腐化圆。圆心落在房间外的丢掉——画出去会糊到隔壁房间上。"""
+    """腐化圆。圆心落在房间外的丢掉——画出去会糊到隔壁房间上。
+
+    **V1.24 №10 起两端都不渲染**：区域地图在 V1.18 下线、房间卡在 V1.24 删掉了
+    那段一直用兜底紫 `#9a4fc4` 的画圆代码。这里**照旧解析**（数据留档，`region_data`
+    里也有原始物件），将来要恢复腐化只差前端十几行，不用重导数据。
+    现在唯一读它的是 `check_regmap_fx.py` 的两条"没有腐化"断言。
+    """
     out = []
     for name, x, y, props in placed:
         if name != "Corruption":

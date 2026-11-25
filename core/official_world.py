@@ -291,6 +291,11 @@ def import_official(
     report("整理结果", 95, f"{len(regions)} 个区域")
     # 出口编号：必须在所有区域收集完之后做（门房间要跨区域合并槽位）
     exit_stats = mod_importer.attach_exits(regions, region_dirs)
+    # 业力门槛（V1.24 №8）：`world/gates/locks.txt` 只在游戏本体里（原版 18 门），
+    # 烘焙进 `rooms[].karma`——发布包抹掉本机路径后，房间卡照样能显示数值。
+    locks = mod_importer.read_gate_locks(
+        game_world, *[p.get("worldDir") for p in packs])
+    karma_stats = mod_importer.bake_gate_karma(regions, locks)
     order = sorted(range(len(regions)), key=lambda i: regions[i]["code"])
     regions = [regions[i] for i in order]
     return {
@@ -300,6 +305,7 @@ def import_official(
         "regions": regions,
         "warnings": warnings,
         "exitStats": exit_stats,
+        "gateKarma": {"gates": len(locks), "rooms": karma_stats},
     }
 
 

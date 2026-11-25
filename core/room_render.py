@@ -1936,6 +1936,9 @@ def render(region: dict, room: str, layer_id: str | None = None, slugcat: str | 
     cache_key, st = _cache_key_of(room_path, layer_id, slugcat, px_per_tile, fit_width,
                                   sky, bool(water), crop)
     region_code = str(region.get("code") or "").upper()
+    # 这一代缓存号：算完写盘时带回去比对。对不上 = 这张图算的过程中这一区
+    # （或整个缓存）被删过，不写（V1.25 附带：否则删完的目录会被这张图重建）。
+    cache_epoch = room_cache.epoch(region_code)
 
     if cache_key and (use_cache or use_disk):
         hit = _from_cache(region_code, room_key, room_path, st, layer_id, slugcat,
@@ -1974,7 +1977,7 @@ def render(region: dict, room: str, layer_id: str | None = None, slugcat: str | 
                 "h": result.get("height"),
                 "builtAt": int(time.time()),
                 "src": {"path": room_path, "mtime": st.st_mtime_ns, "size": st.st_size},
-            }, crop)
+            }, crop, epoch_at_start=cache_epoch)
 
     if use_cache and cache_key:
         with _render_lock:

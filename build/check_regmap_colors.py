@@ -56,7 +56,9 @@ def all_codes() -> list[str]:
 
 def audit(code: str) -> dict:
     reg = adapter.load_rooms(code)
-    rooms = list(reg["rooms"])
+    # 门不参与取色（产品侧同样排除：门房在 `world/gates/` 下，且 `GATE_*` 排在最前，
+    # 会顶掉 `colors.for_region` 用 `rooms[0].path` 反推区域目录那一步）
+    rooms = [r for r in reg["rooms"] if not r.is_gate]
     got = colors.for_region(code, rooms, reg)
     expect(HEX.match(got["air"] or ""), "%s 可通行色不是合法 HEX：%r" % (code, got["air"]))
     expect(HEX.match(got["struct"] or ""), "%s 结构色不是合法 HEX：%r" % (code, got["struct"]))
@@ -72,13 +74,22 @@ def audit(code: str) -> dict:
         expect(HEX.match(g["air"] or ""), "%s 组 %s 颜色非法" % (code, g["sub"] or "(主体)"))
         expect(lum(g["struct"]) < lum(g["air"]), "%s 组 %s 结构色不够暗" % (code, g["sub"] or "(主体)"))
 
-    # SVG：每间房都得带上自己的 `--rg-air`，且只能取自己那组的值
+    # SVG：每间房都得带上自己的 `--rg-air`，且只能取自己那组的值。
+    # V1.24 起 `<g>` 上多了一个 `data-sub`（前端「背景取色」按它改 CSS 变量），
+    # 所以 `data-room` 与 `style` 之间不再相邻——正则放宽成 `[^>]*`。
     lay = adapter.build(code)
     body = regmap_svg.build_svg(lay, width=1400, anno=True)["svg"]
     by_sub = {g["sub"]: g["air"] for g in got["groups"]}
-    seen = re.findall(r'<g class="rm[^"]*" data-room="[^"]*" style="--rg-air:([^;]+);--rg-cg:([^"]+)"', body)
+    seen = re.findall(
+        r'<g class="rm[^"]*" data-room="[^"]*"[^>]*style="--rg-air:([^;]+);--rg-cg:([^"]+)"', body)
     expect(len(seen) == len(lay["nodes"]),
            "%s 带底色变量的房间 %d 个，布局里 %d 间" % (code, len(seen), len(lay["nodes"])))
+    dsubs = re.findall(r'<g class="rm[^"]*" data-room="[^"]*" data-sub="([^"]*)"', body)
+    expect(len(dsubs) == len(lay["nodes"]),
+           "%s 带 data-sub 的房间 %d 个，布局里 %d 间" % (code, len(dsubs), len(lay["nodes"])))
+    expect(all((s or "") in by_sub for s in dsubs),
+           "%s data-sub 里出现了不存在的分组：%s"
+           % (code, sorted({s for s in dsubs if (s or "") not in by_sub})[:3]))
     allowed = set(by_sub.values())
     bad = [a for (a, _c) in seen if a not in allowed]
     expect(not bad, "%s SVG 里出现了不属于任何分组的底色：%s" % (code, bad[:3]))
@@ -98,7 +109,8 @@ def audit(code: str) -> dict:
     return {"code": code, "air": got["air"], "struct": got["struct"],
             "src": got["src"], "palette": got["palette"],
             "groups": len(got["groups"]), "subs": [g["sub"] for g in got["groups"] if g["sub"]],
-            "rooms": len(lay["nodes"])}
+            # 只数普通房间：门不参与取色，算进「间房」会把总数虚增（V1.24 rev.14）
+            "rooms": sum(1 for n in lay["nodes"] if not n.get("gate"))}
 
 
 def audit_struct_algo() -> None:

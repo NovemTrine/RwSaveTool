@@ -2,7 +2,7 @@
 # 程序内版本号另有一处：core/__init__.py 的 __version__，两者必须一致。
 # 本文件随源码一起归档，用于标记「这份代码是哪个版本」。
 
-version = 1.3.0
-name = 区域地图几何化
-date = 2026-11-22
+version = 1.3.1
+name = 区域地图精修
+date = 2026-11-25
 channel = stable

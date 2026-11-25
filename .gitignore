@@ -23,6 +23,7 @@ build/_test/
 build/_backup/
 build/_clean_region_data/
 build/_release_stage/
+build/_release_smoke/
 _test/
 *.spec
 
@@ -46,6 +47,7 @@ docs/*.json
 *.bak
 *.bak-*
 *.log
+Documents/
 
 # ---------- 工具与系统 ----------
 .vscode/

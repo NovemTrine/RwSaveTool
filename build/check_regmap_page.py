@@ -82,10 +82,6 @@ document.body.addEventListener('click', function(){ pop.hidden = true; });
       var i = grid.querySelector('[data-k="' + it[0] + '"]'); if (i) i.value = PAL[it[0]]; });
     paint(); });
 });
-document.getElementById('geo-pal-reset').addEventListener('click', function(){
-  ITEMS.forEach(function(it){ PAL[it[0]] = DEF[it[0]];
-    var i = grid.querySelector('[data-k="' + it[0] + '"]'); if (i) i.value = DEF[it[0]]; });
-  paint(); });
 
 var W = +svg.dataset.w, H = +svg.dataset.h, baseW = 0;
 var vb = {x:0,y:0,w:1,h:1};
@@ -164,8 +160,7 @@ def page(code: str, svg: str, rooms: int, links: int, sub: str, density: int,
         '<div class="geo-pal-pop" id="geo-pal-pop" hidden>',
         '<div class="geo-pal-head"><span>本区设置</span>',
         '<button class="btn ghost" data-rgpreset="room" type="button">房间卡</button>',
-        '<button class="btn ghost" data-rgpreset="map" type="button">地图</button>',
-        '<button class="btn ghost" id="geo-pal-reset" type="button">还原</button></div>',
+        '<button class="btn ghost" data-rgpreset="map" type="button">地图</button></div>',
         '<div class="rp-grid" id="geo-pal-grid"></div></div>',
         svg,
         '</div></div>',

@@ -43,6 +43,12 @@ CONDITION_RE = re.compile(
     r"^(.+?)\s*:\s*(EXCLUSIVEROOM|HIDEROOM)\s*:\s*([A-Za-z0-9_]+)\s*$", re.IGNORECASE
 )
 
+# `world/gates/locks.txt` 的门锁行：`GATE_SU_DS : 4 : 2`，第 4 段是 `SWAPMAPSYMBOL`
+# （两端在图上对调）。以前的正则只认三段，18 行里漏 3 行——这 3 行恰好是带对调标记的。
+LOCK_LINE = re.compile(
+    r"^\s*([A-Za-z0-9_\-]+)\s*:\s*(\d+)\s*:\s*(\d+)(?:\s*:\s*([A-Za-z_]+))?\s*$"
+)
+
 
 # --------------------------------------------------------------------------
 # 基础工具
@@ -227,8 +233,11 @@ def parse_conditional(text: str) -> dict[str, dict]:
         if not room:
             continue
         names: list[str] = []
-        for part in re.split(r"[,;]", actor):
-            name = re.sub(r"\{[^}]*\}", "", part).strip().upper()
+        # **先剥 `{...}` 整块再按 `,;` 切**（V1.24 №7）：`{!PostBathScene,!ToySending}Watcher`
+        # 里逗号在花括号内，先切会把角色名切碎（WAUA_A06B 就是这么落成
+        # `["{POSTBATHSCENE", "!TOYSENDING}WATCHER"]` 的）。花括号是剧情条件，不是角色。
+        for part in re.split(r"[,;]", re.sub(r"\{[^}]*\}", "", actor)):
+            name = part.strip().upper()
             if name and name not in names:
                 names.append(name)
         if not names:
@@ -824,6 +833,76 @@ def attach_exits(regions: list[dict], dirs_list: list[list[str]]) -> dict:
 # --------------------------------------------------------------------------
 # 模组级导入
 # --------------------------------------------------------------------------
+def _find_locks(world_dir: str) -> str:
+    """`<world>/gates/locks.txt`（目录名大小写不固定，也接受直接给 `gates/`）。"""
+    if not isinstance(world_dir, str) or not os.path.isdir(world_dir):
+        return ""
+    try:
+        names = os.listdir(world_dir)
+    except OSError:
+        return ""
+    for fn in names:
+        if fn.lower() == "locks.txt":
+            return os.path.join(world_dir, fn)
+        if fn.lower() != "gates":
+            continue
+        gdir = os.path.join(world_dir, fn)
+        if not os.path.isdir(gdir):
+            continue
+        try:
+            for sub in os.listdir(gdir):
+                if sub.lower() == "locks.txt":
+                    return os.path.join(gdir, sub)
+        except OSError:
+            continue
+    return ""
+
+
+def read_gate_locks(*world_dirs: str | None) -> dict[str, list[int]]:
+    """从若干 `world/` 根读 `gates/locks.txt` → `{GATE_X: [左, 右]}`（后面的覆盖前面的）。
+
+    只有游戏本体带这份文件（原版 18 门）。模组多半没有，读不到就返回空表，**不报错**。
+    第 4 段 `SWAPMAPSYMBOL`（两端在图上对调）本轮不参与计算：房间卡只显示左右两个数字，
+    将来若把门徽标放回地图，再按它翻转。
+    """
+    out: dict[str, list[int]] = {}
+    for root in world_dirs:
+        path = _find_locks(root or "")
+        if not path:
+            continue
+        for line in _read_text(path).split("\n"):
+            m = LOCK_LINE.match(line)
+            if not m:
+                continue
+            out[m.group(1).upper()] = [int(m.group(2)), int(m.group(3))]
+    return out
+
+
+def bake_gate_karma(regions: list[dict], locks: dict[str, list[int]]) -> int:
+    """把业力门槛写进各区域的**门房**：`rooms[].karma = [左, 右]`。返回写入条数。
+
+    为什么要烘焙：`locks.txt` 在游戏目录里，发布包抹掉本机路径后就没了；
+    区域地图会画门（V1.24 起门也上图），但图上只画框、不标数值——数值给房间卡用，
+    所以只存两个数。
+    找不到门槛的门房**留空，不猜**（模组门只能是「业力门（无数据）」）。
+    """
+    if not locks:
+        return 0
+    changed = 0
+    for region in regions or []:
+        for layer in region.get("layers") or []:
+            for room in layer.get("rooms") or []:
+                name = str(room.get("name") or "").strip().upper()
+                if not name.startswith("GATE_"):
+                    continue
+                pair = locks.get(name)
+                if not pair or room.get("karma") == pair:
+                    continue
+                room["karma"] = list(pair)
+                changed += 1
+    return changed
+
+
 def import_mod(
     path: str,
     progress: Callable[[str, int, str], None] | None = None,
@@ -920,6 +999,11 @@ def import_mod(
     report("整理结果", 95, f"{len(regions)} 个区域")
     # 出口编号：必须在所有区域收集完之后做（门房间要跨区域合并槽位）
     exit_stats = attach_exits(regions, region_dirs)
+    # 业力门槛（V1.24 №8）：模组自己有 `world/gates/locks.txt` 就顺手烘焙进数据；
+    # 没有就留空——房间卡显示「业力门（无数据）」，不去猜。
+    locks = read_gate_locks(*[d for r in regions
+                              for d in (r.get("source") or {}).get("worldDirs") or []])
+    karma_stats = bake_gate_karma(regions, locks)
     order = sorted(range(len(regions)), key=lambda i: regions[i]["code"])
     regions = [regions[i] for i in order]
     region_dirs = [region_dirs[i] for i in order]
@@ -930,4 +1014,5 @@ def import_mod(
         "warnings": warnings,
         "multi": info["kind"] == "multi",
         "exitStats": exit_stats,
+        "gateKarma": {"gates": len(locks), "rooms": karma_stats},
     }

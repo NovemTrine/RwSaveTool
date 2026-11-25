@@ -4,8 +4,8 @@ __all__ = ["paths", "save_io", "mod_importer", "region_store", "bridge", "room_r
            "room_cache"]
 # 程序版本：唯一来源。改这里即可，bridge 与窗口标题都从这里取。
 # 语义化版本：主版本.次版本.修订号；配置结构版本另见 paths.CONFIG_VERSION。
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 # 版本名称与发布日期（随版本号一起更新，供「关于」与发布包元信息使用）
-__version_name__ = "区域地图几何化"
-__release_date__ = "2026-11-22"
+__version_name__ = "区域地图精修"
+__release_date__ = "2026-11-25"

@@ -12,7 +12,11 @@
 |---|---|
 | 房间文件的 mtime / size 变了 | `load()` 对不上就返回 None，重渲 |
 | 缓存格式版本升了 | 同上（`CACHE_VER`） |
-| 区域被重导 / 删层 / 删来源 | 整目录删掉（`region_store` 里的调用点） |
+| 区域被重导 / 删层 / 删来源 | 整目录删掉（`region_store` 里的调用点），并 `bump_epoch` 让在途那张不许写回来 |
+
+**代际号（V1.25）**：删目录只是"现在没有"，管不住"正在算的那张算完又写回来"。
+`purge_region` / `clear_all` 先 `bump_epoch()`，`room_render.render()` 开始时 `epoch()` 取号、
+`store()` 时比对，号变了就一个字节都不写（写完才发现也会把自己刚写的两份删掉）。
 
 **参数走文件名而不是元数据**：角色（`_settings-<角色>.txt` 会换调色板）、密度、
 天空、水面各自一份，互不覆盖。所以切角色回来不需要重算——这也是计划书 §4.9 的要求。
@@ -52,6 +56,44 @@ DIR_NAME = "_roomcache"
 
 _write_count = 0
 _trim_lock = threading.Lock()
+
+# ---- 代际号（V1.25 附带：修「删了又长回来」）--------------------------------
+# 为什么需要：`purge_region()` / `clear_all()` 只删磁盘，**管不住已经在渲染的那一张**——
+# `room_render.render(use_cache=True)` 算完会无条件 `store()`，而 `store()` 里
+# `makedirs(exist_ok=True)` 会把刚删掉的目录原样重建出来（2026-11-25 复现：
+# purge 返回 1，0 ms 后目录里又多了 GW_A11 的 png/json，+2.5 s 又写回 GW_C02）。
+#
+# 做法：删之前把"这一代"作废，渲染开始时取号、写盘前比对，号变了就一个字节都不写。
+# 分两个粒度，是为了别互相误伤：
+#   · `_epoch_region[CODE]` —— 只作废这一个区（删区域/删层/重导/删来源走它）；
+#   · `_epoch_all`          —— 作废全部（清空缓存走它）。
+# 比对放在 `store()` 里而不是调用方：预取、用户开卡、放大裁块三条路都过 `store()`，
+# 谁都不用记得自己该不该受这次删除影响。
+_epoch_lock = threading.Lock()
+_epoch_region: "dict[str, int]" = {}
+_epoch_all = 0
+
+
+def epoch(code: str | None = None):
+    """当前代际号（`(该区号, 全局号)`）。渲染开始时取一次，写盘时带回来比对。"""
+    with _epoch_lock:
+        if not code:
+            return (0, _epoch_all)
+        return (_epoch_region.get(_safe(str(code).upper()), 0), _epoch_all)
+
+
+def bump_epoch(code: str | None = None) -> None:
+    """作废一代：`code=None` 作废全部，给了区号就只作废这一个区。
+
+    **必须在真正删文件之前调**——先作废再删，才能保证"删除过程中开始写"的那张也不算数。
+    """
+    global _epoch_all
+    with _epoch_lock:
+        if not code:
+            _epoch_all += 1
+            return
+        key = _safe(str(code).upper())
+        _epoch_region[key] = _epoch_region.get(key, 0) + 1
 
 
 # ---------------------------------------------------------------------------
@@ -138,10 +180,18 @@ def load(code: str, room: str, slugcat: str | None, px: int, fit: int,
 
 
 def store(code: str, room: str, slugcat: str | None, px: int, fit: int,
-          png: bytes, meta: dict, crop: tuple | None = None) -> bool:
-    """写盘。先图后元数据——元数据存在即代表整张图可用。"""
+          png: bytes, meta: dict, crop: tuple | None = None,
+          epoch_at_start=None) -> bool:
+    """写盘。先图后元数据——元数据存在即代表整张图可用。
+
+    `epoch_at_start` = **开始渲染那一刻**的代际号（`epoch(code)`）。给了就比对：
+    对不上说明这张图算的过程中这一区（或整个缓存）被删过，**一个字节都不写**。
+    写完再查一次并把自己刚写的两份删掉——覆盖"删发生在写入过程中"的那几毫秒。
+    """
     global _write_count
     if not png:
+        return False
+    if epoch_at_start is not None and epoch_at_start != epoch(code):
         return False
     purge_stale()
     png_path, meta_path = entry(code, room, slugcat, px, fit, crop)
@@ -153,6 +203,14 @@ def store(code: str, room: str, slugcat: str | None, px: int, fit: int,
         _atomic(png_path, png)
         _atomic(meta_path, json.dumps(payload, ensure_ascii=False).encode("utf-8"))
     except OSError:
+        return False
+    if epoch_at_start is not None and epoch_at_start != epoch(code):
+        # 写的过程中被删了：把这两份清掉，别让刚清空的目录长回来
+        for path in (png_path, meta_path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
         return False
 
     with _trim_lock:
@@ -266,10 +324,15 @@ def _inside_cache(target: str) -> bool:
 
 
 def purge_region(code: str) -> int:
-    """删掉某个区域的全部缓存。区域不存在也当成功（幂等）。"""
+    """删掉某个区域的全部缓存。区域不存在也当成功（幂等）。
+
+    **先作废这一区的代际号、再删文件**：删的过程中正在渲染的那张即使算完了，
+    `store()` 也会因为号对不上而一个字节都不写（否则 rmtree 之后目录会被它重建）。
+    """
     target = region_dir(code)
     if not _inside_cache(target):
         return 0
+    bump_epoch(code)                       # 必须在 rmtree 之前
     if not os.path.isdir(target):
         return 0
     # Windows 上后台预取可能正好在写某个文件，rmtree 会因句柄占用失败（目录留下半截）。
@@ -289,7 +352,9 @@ def clear_all() -> dict:
     before = stats()
     root = cache_root()
     if not _inside_cache(root) or not os.path.isdir(root):
+        bump_epoch()                       # 目录本来就没有，也要让在途写盘作废
         return {"ok": True, "freed": 0, "removed": 0}
+    bump_epoch()                           # 全局代际：任何区在途的那张都不许写回来
     try:
         shutil.rmtree(root)
     except OSError as exc:

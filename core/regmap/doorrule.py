@@ -91,6 +91,28 @@ def channel_segment(room, x, y):
     return seg or None
 
 
+_CLIMB = 6          # 可攀爬背景；「管道口」= 同格既有 3（管道）又有 6（背景）
+
+
+def port_cell(room, x, y):
+    """门格所在通道段的**管道口**格 `(x, y)`；不是通道 / 段太长找不到就 None。
+
+    管道口 = 段里同时带 `3`（管道）与 `6`（可攀爬背景）的格——也就是管道从墙里伸出来、
+    与空气/结构**接触**的那一格（房间卡里画成 T 形的就是它）。V1.25 №15：区域地图的
+    门点从"框边界上的投影点"改到这一格，才是玩家实际走出去的位置。
+
+    取**离门格最远**的那个口：一条通道偶尔有两头都带 6（穿墙两侧都是可攀爬面），
+    远端那个才是房间里的口。段里没有 `3+6` 时退回段末端（管道尽头），仍然比框边界准。
+    """
+    seg = channel_segment(room, x, y)
+    if not seg:
+        return None
+    objs = room_objects(room)
+    ports = [q for q in seg if _OBJ in (objs.get(q) or ()) and _CLIMB in (objs.get(q) or ())]
+    pool = ports or list(seg)
+    return max(pool, key=lambda q: (q[0] - x) ** 2 + (q[1] - y) ** 2)
+
+
 def channel_side(room, x, y, flip=True):
     """→ (side, conf) / None。方向 = 门相对这段通道质心的位移主轴。"""
     seg = channel_segment(room, x, y)

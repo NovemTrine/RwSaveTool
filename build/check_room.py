@@ -212,7 +212,13 @@ def main() -> int:
 
         # ---- 1. 打开 GW 地图 ----
         js("var b=document.querySelector('[data-map=\"GW\"]'); if(b) b.click();")
-        time.sleep(4.2)      # 区域地图现在是现算的几何图（冷启动实测要 3 s 上下）
+        # 区域地图是现算的几何图：冷启动 2–4 s，加上 117 个区域的 detail 并发加载会更久。
+        # 死等 4.2 s 在大区上会偶发抢跑（读到还没渲染的清单），改成轮询到第一个 .rm 出现。
+        for _ in range(30):
+            time.sleep(0.5)
+            if js("document.querySelectorAll('#geo-stage .rm[data-room]').length > 0"):
+                break
+        time.sleep(0.6)
         info = loads(js(
             "JSON.stringify({map:!document.getElementById('modal').hidden,"
             "chips:document.querySelectorAll('#mu-body .mu-chip').length})"
@@ -467,6 +473,35 @@ def main() -> int:
               tog.get("before") is True and tog.get("after") is False
               and tog.get("shown") is False, str(tog))
         grab(os.path.join(SHOTS, "room_card_climb_off.bmp"))
+
+        # ---- 10.1 №3：图例各类**独立**开关（V1.24）----
+        # 关掉「管道」：绘制要停，但图例上的计数不能消失（只是变灰）。
+        tog2 = loads(js(
+            "JSON.stringify((function(){var b=document.querySelector('#rm-legend [data-k=\\\"pipe\\\"]');"
+            "if(!b) return {none:true}; var before=b.classList.contains('on'); b.click();"
+            "var card=window.__rwTest.roomCard();"
+            "return {before:before, after:b.classList.contains('on'),"
+            "shown:card.marksShown && card.marksShown.pipe, dots:card.pipeDots,"
+            "legend:document.getElementById('rm-legend').textContent};})())"
+        )) or {}
+        check("图例「管道」能单独关掉（其余类不受影响）",
+              tog2.get("before") is True and tog2.get("after") is False
+              and tog2.get("shown") is False and (tog2.get("dots") or 0) > 0
+              and "管道" in (tog2.get("legend") or ""), str(tog2))
+        back2 = loads(js(
+            "JSON.stringify((function(){var b=document.querySelector('#rm-legend [data-k=\\\"pipe\\\"]');"
+            "if(b) b.click(); return {on:b?b.classList.contains('on'):null,"
+            "shown:window.__rwTest.roomCard().marksShown.pipe};})())"
+        )) or {}
+        check("再点一下恢复显示", back2.get("on") is True and back2.get("shown") is True, str(back2))
+
+        # ---- 10.2 №8：门房的业力门槛（烘焙进 region_data，只显示文字）----
+        js("window.__rwTest.openRoom('SU','GATE_SU_DS');")
+        time.sleep(1.4)
+        gate = loads(js("JSON.stringify(window.__rwTest.roomCard())")) or {}
+        check("门房标题显示「业力门 左4/右2」",
+              "业力门 左4/右2" in (gate.get("sub") or ""), gate.get("sub"))
+        grab(os.path.join(SHOTS, "room_card_gate_karma.bmp"))
 
         # ---- 10.5 P4：默认全屏两栏 + 右侧出口清单 ----
         # P4 起默认全屏：右栏清单只在全屏可见，默认紧凑会让「出口跳转 / 悬停高亮」没有入口。
@@ -992,7 +1027,11 @@ def main() -> int:
               f"files={files_before_clear} bar={bar_txt[:60]}")
 
         js("var b=document.getElementById('m-room-clear'); if(b) b.click();")
-        time.sleep(0.4)
+        # 缓存里有几张时后端要先统计一遍，确认框弹得慢；0.4 s 死等会点空（偶发红）
+        for _ in range(20):
+            time.sleep(0.2)
+            if js("!!document.querySelector('#confbox [data-cf=\"yes\"]')"):
+                break
         js("var b=document.querySelector('#confbox [data-cf=\"yes\"]'); if(b) b.click();")
         card_after, bar2 = {}, {}
         for _ in range(30):

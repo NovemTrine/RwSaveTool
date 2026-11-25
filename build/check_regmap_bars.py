@@ -57,13 +57,33 @@ def covers(rects, px, py, eps=0.35):
     return False
 
 
+def _merged(n, kinds):
+    """把若干 kind 的游程拼成一份（与 `svg.build_svg` 的调用口径一致：`b`+`B` 一起画）。"""
+    out = []
+    for k in kinds:
+        out.extend([list(s) for s in ((n.get("over") or {}).get(k) or [])])
+    return out
+
+
+def _hit(rects, px, py, eps=0.01):
+    for (x, y, w, h) in rects:
+        if x - eps <= px <= x + w + eps and y - eps <= py <= y + h + eps:
+            return True
+    return False
+
+
 def audit_room(n, cw, ch, px, py):
-    """一间房 → (缺格数, 拐角总数, 拐角连上的数, {kind: (新条目, 旧条目)})。"""
-    missing = corners = joined = 0
+    """一间房 → (缺格数, 拐角总数, 拐角连上的数, {组: (新条目, 旧条目)}, 外溢数, miss_by)。
+
+    组只有两个：`b+B`（V1.24 №5 起合并绘制、同色）与 `p`。合并之后判据才和真实渲染一致
+    ——按单个 kind 测会把"一格 b + 一格 B"的转角算成两个互不相连的段。
+    """
+    missing = corners = joined = spill = 0
     miss_by = {}
     stats = {}
-    for kind in ("b", "B", "p"):
-        segs = (n.get("over") or {}).get(kind) or []
+    groups = (("b+B", ("b", "B"), "b"), ("p", ("p",), "p"))
+    for gname, kinds, colour in groups:
+        segs = _merged(n, kinds)
         if not segs:
             continue
         grid, w, h = svg._bar_grid(segs)
@@ -72,16 +92,19 @@ def audit_room(n, cw, ch, px, py):
         # 管道的大片会先挖掉"内部格"（见 `_bar_path`）：那些格子本来就不该被画，
         # 统计"缺格"时要把它们排除，否则每一片实心都会报几十个假缺。
         hollowed = set()
-        if kind == "p" and w > 2 and h > 2:
+        if colour == "p" and w > 2 and h > 2:
             for y in range(1, h - 1):
                 for x in range(1, w - 1):
                     if grid[y][x] and grid[y][x - 1] and grid[y][x + 1] \
                             and grid[y - 1][x] and grid[y + 1][x]:
                         hollowed.add((x, y))
-        d = svg._bar_path(segs, cw, ch, px, py, kind, 1.0)
+        d = svg._bar_path(segs, cw, ch, px, py, colour, 1.0)
         rects = parse_rects(d)
-        old = len(svg._merge_blocks(segs))
-        stats[kind] = (len(rects), old)
+        old = sum(len(svg._merge_blocks([list(s) for s in ((n.get("over") or {}).get(k) or [])]))
+                  for k in kinds)
+        stats[gname] = (len(rects), old)
+        vs = svg._orient(grid, w, h, True)
+        hs = svg._orient(grid, w, h, False)
 
         for y in range(h):
             for x in range(w):
@@ -95,17 +118,26 @@ def audit_room(n, cw, ch, px, py):
                 if not hit:
                     if (x, y) not in hollowed:
                         missing += 1
-                        miss_by[kind] = miss_by.get(kind, 0) + 1
+                        miss_by[gname] = miss_by.get(gname, 0) + 1
                     continue
                 hz = (x > 0 and grid[y][x - 1]) or (x < w - 1 and grid[y][x + 1])
                 vt = (y > 0 and grid[y - 1][x]) or (y < h - 1 and grid[y + 1][x])
-                if hz and vt and kind != "p":      # 管道按块画，不参与"两向连上"这条
+                if hz and vt and colour != "p":      # 管道按块画，不参与"两向连上"这条
                     corners += 1
                     wide = any(r[2] > r[3] + 0.01 for r in hit)
                     tall = any(r[3] > r[2] + 0.01 for r in hit)
                     if wide and tall:
                         joined += 1
-    return missing, corners, joined, stats, miss_by
+                    # №2：拐角格四个方向里"没有数据"的那半边不许被涂到 0.4 格外。
+                    # 老画法两向都铺满整格，那半格就是主人看到的"＋"的两个多余臂。
+                    if vs[y][x] and hs[y][x]:
+                        for (dx, dy) in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                            nx, ny = x + dx, y + dy
+                            if 0 <= nx < w and 0 <= ny < h and grid[ny][nx]:
+                                continue
+                            if _hit(rects, cx + dx * cw * 0.4, cy + dy * ch * 0.4):
+                                spill += 1
+    return missing, corners, joined, stats, spill, miss_by
 
 
 def audit_hd(nodes, code, s):
@@ -126,11 +158,11 @@ def audit_hd(nodes, code, s):
             continue
         cw, ch = (n["w"] * s) / max(1, tw), (n["h"] * s) / max(1, th)
         gy = svg._copy_groups(th, bh)
-        for kind in ("b", "B", "p"):
-            segs = (n.get("over") or {}).get(kind) or []
+        for kinds, colour in ((("b", "B"), "b"), (("p",), "p")):
+            segs = _merged(n, kinds)
             if not segs:
                 continue
-            d = svg._bar_path(segs, cw, ch, 0.0, 0.0, kind, 1.0, (bw, bh, tw, th))
+            d = svg._bar_path(segs, cw, ch, 0.0, 0.0, colour, 1.0, (bw, bh, tw, th))
             for (x, y, w, h) in parse_rects(d):
                 drawn += 1
                 # `h > w*1.5` 而不是 `h > w`：孤立格补的是 1/3 方块，宽高只差 0.1 的取整
@@ -155,9 +187,9 @@ def main() -> int:
                        if f.lower().endswith(".json") and not f.startswith("_")) \
             if "--all" in sys.argv else CODES
 
-    print("%-6s %5s %-11s %-11s %-9s %s" % ("区", "房间", "新/旧(b)", "新/旧(B)", "拐角(连上)", "耗时"))
-    tot = {"rooms": 0, "b_new": 0, "b_old": 0, "B_new": 0, "B_old": 0,
-           "corners": 0, "joined": 0, "missing": 0, "hd_ticks": 0}
+    print("%-6s %5s %-11s %-11s %-9s %s" % ("区", "房间", "杆(新/旧)", "管(新/旧)", "拐角(连上)", "外溢"))
+    tot = {"rooms": 0, "b_new": 0, "b_old": 0, "p_new": 0, "p_old": 0,
+           "corners": 0, "joined": 0, "missing": 0, "hd_ticks": 0, "spill": 0}
     t0 = time.time()
     for code in codes:
         try:
@@ -167,16 +199,17 @@ def main() -> int:
             continue
         s = (2400 - 28) / max(1e-9, max(n["x"] + n["w"] for n in lay["nodes"])
                               - min(n["x"] for n in lay["nodes"]))
-        got = {"b": [0, 0], "B": [0, 0], "p": [0, 0]}
-        missing = corners = joined = 0
+        got = {"b+B": [0, 0], "p": [0, 0]}
+        missing = corners = joined = spill = 0
         miss_by = {}
         for n in lay["nodes"]:
             cw = (n["w"] * s) / max(1, n["thumbW"])
             ch = (n["h"] * s) / max(1, n["thumbH"])
-            m, c, j, st, mb = audit_room(n, cw, ch, 0.0, 0.0)
+            m, c, j, st, sp, mb = audit_room(n, cw, ch, 0.0, 0.0)
             missing += m
             corners += c
             joined += j
+            spill += sp
             for k, v in mb.items():
                 miss_by[k] = miss_by.get(k, 0) + v
             for k, (new, old) in st.items():
@@ -186,18 +219,17 @@ def main() -> int:
                % (code, missing, miss_by))
         expect(corners == 0 or joined >= corners,
                "%s 拐角 %d 个，只有 %d 个横竖都画到" % (code, corners, joined))
-        for k in ("b", "B"):
+        expect(spill == 0, "%s 有 %d 处拐角往\"没有数据\"的方向多涂了半格（就是那个＋）"
+               % (code, spill))
+        for k in ("b+B", "p"):
             if got[k][1]:
                 ratio = got[k][0] / float(got[k][1])
-                expect(ratio <= 1.6, "%s 的 %s 条目是旧画法的 %.2f 倍（上限 1.6，字节会涨）"
-                       % (code, k, ratio))
-        if got["p"][1]:
-            expect(got["p"][0] <= got["p"][1] * 1.8,
-                   "%s 的管道条目 %d 是块数 %d 的 %.2f 倍（上限 1.8）"
-                   % (code, got["p"][0], got["p"][1], got["p"][0] / float(got["p"][1])))
-        print("%-6s %5d %5d/%-5d %5d/%-5d %5d/%-5d %.1fs"
-              % (code, len(lay["nodes"]), got["b"][0], got["b"][1],
-                 got["B"][0], got["B"][1], joined, corners, time.time() - t0))
+                cap = 1.6 if k == "b+B" else 1.8
+                expect(ratio <= cap, "%s 的 %s 条目是旧画法的 %.2f 倍（上限 %.1f，字节会涨）"
+                       % (code, k, ratio, cap))
+        print("%-6s %5d %5d/%-5d %5d/%-5d %5d/%-5d %d %.1fs"
+              % (code, len(lay["nodes"]), got["b+B"][0], got["b+B"][1],
+                 got["p"][0], got["p"][1], joined, corners, spill, time.time() - t0))
         if hd:
             # 高清层要重新铺一遍缩略图（density=4 的显示格比源格细，假厚度就在那一层）
             nodes = [dict(x) for x in lay["nodes"]]
@@ -206,16 +238,17 @@ def main() -> int:
             tot["hd_ticks"] += ticks
             print("%-6s 高清层 4x：假竖刺 %d 根" % ("", ticks))
         tot["rooms"] += len(lay["nodes"])
-        tot["b_new"] += got["b"][0]; tot["b_old"] += got["b"][1]
-        tot["B_new"] += got["B"][0]; tot["B_old"] += got["B"][1]
-        tot["corners"] += corners; tot["joined"] += joined; tot["missing"] += missing
+        tot["b_new"] += got["b+B"][0]; tot["b_old"] += got["b+B"][1]
+        tot["p_new"] += got["p"][0]; tot["p_old"] += got["p"][1]
+        tot["corners"] += corners; tot["joined"] += joined
+        tot["missing"] += missing; tot["spill"] += spill
 
     print("-" * 60)
-    print("合计：%d 间房；杆 b %d→%d（×%.2f）、横杆 B %d→%d（×%.2f）；"
-          "拐角 %d 个、连通 %d 个；缺格 %d；高清层假竖刺 %d"
+    print("合计：%d 间房；杆 %d→%d（×%.2f）、管 %d→%d（×%.2f）；"
+          "拐角 %d 个、连通 %d 个；缺格 %d；外溢 %d；高清层假竖刺 %d"
           % (tot["rooms"], tot["b_old"], tot["b_new"], tot["b_new"] / max(1, tot["b_old"]),
-             tot["B_old"], tot["B_new"], tot["B_new"] / max(1, tot["B_old"]),
-             tot["corners"], tot["joined"], tot["missing"], tot["hd_ticks"]))
+             tot["p_old"], tot["p_new"], tot["p_new"] / max(1, tot["p_old"]),
+             tot["corners"], tot["joined"], tot["missing"], tot["spill"], tot["hd_ticks"]))
     if FAILS:
         print("\n失败 %d 项：" % len(FAILS))
         for f in FAILS:

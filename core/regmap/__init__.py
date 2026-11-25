@@ -68,11 +68,22 @@ def _finish(result, region, p, code, prepare):
     # 区域配色（V1.15 №0/№4）：调色板提取的可通行色 + `corlor` 派生的背景结构色，
     # 主体一组、每个子区域一组。挂到 `colors` 上，`svg` 按房间所在子区域下发 CSS 变量。
     try:
+        # ⚠️ 这里**只出「派生色」（base）**，不叠按区自定义的覆盖色（V1.24 修）：
+        # 覆盖色是"渲染时套用"的，由 `bridge` 在取图/取布局时叠上去。
+        # 原因：颜色一旦进了布局结果，`_regmap_key` 就得把颜色也算进去，
+        # 于是"改个背景色"会把整个几何布局缓存作废、重算 1–2 秒（还会因为
+        # 重算本身的不确定性把地图重排）。几何与配色必须分开。
+        # 取色用 `color_rooms`（**筛选前**的全量房间）：№6/№7 改了画几间房，
+        # 但配色不该跟着跳——关掉一个模组来源，剩下房间的颜色必须还是原来的。
+        pick = region.get("color_rooms")
+        if not isinstance(pick, list):
+            pick = (region.get("rooms") if isinstance(region.get("rooms"), list) else
+                    [n["room"] for n in result["nodes"] if n.get("room")])
+        # 大门不参与取色（见 `model._color_rooms` 的注释：`GATE_*` 会排在最前面，
+        # 而 `colors.for_region` 用第一间房的路径反推区域目录）
+        pick = [r for r in pick if not model.is_gate(getattr(r, "name", ""))]
         result["colors"] = colors.cached(
-            (code or region.get("code") or "").upper(),
-            region.get("rooms") if isinstance(region.get("rooms"), list) else
-            [n["room"] for n in result["nodes"] if n.get("room")],
-            region)
+            (code or region.get("code") or "").upper(), pick, region)
     except Exception as exc:                      # noqa: BLE001 - 取色失败就用兜底色
         result.setdefault("stats", {})["colors_error"] = str(exc)
     result["region"] = {
@@ -81,6 +92,8 @@ def _finish(result, region, p, code, prepare):
         "displayName": region.get("displayName") or "",
         "nameZh": region.get("nameZh") or "",
         "rooms": len(region["rooms"]),
+        "roomsTotal": region.get("rooms_total") or len(region["rooms"]),
+        "dropped": region.get("dropped") or {},
         "gates": region.get("gates"),
         "missing": region.get("missing") or [],
         "campaign": region.get("campaign") or "",

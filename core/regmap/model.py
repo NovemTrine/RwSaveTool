@@ -19,12 +19,62 @@ from collections import OrderedDict
 
 from . import config
 
-# 门房间（GATE_XX_YU 之类）坐标在地图之外，不属于区域内部布局
-SKIP_PREFIX = ("GATE_",)
+# 门房间（GATE_XX_YU 之类）。V1.24 起**也画进区域图**（附在区域边界那间房上），
+# 这里只留前缀用于识别：`is_gate()` 决定渲染样式、业力提示与"没邻居就别硬画"。
+GATE_PREFIX = ("GATE_",)
+# 兼容旧名字（demo / check 脚本还按 `SKIP_PREFIX` 引用）
+SKIP_PREFIX = GATE_PREFIX
 
 _SIZE_RE = re.compile(r"^\s*(\d+)\s*\*\s*(\d+)\s*(?:\||$)")
 # 变体件命名：`UW_A04RIV` / `SB_E05SAINT` / `TM_A01SPEAR` → 基名 + 后缀
 _VARIANT_RE = re.compile(r"^(.*\d)([A-Z]+)$")
+
+
+# ---------------------------------------------------------------- 角色（V1.24 №7）
+# 与 `ui/rw_gui.html` 的 `SLUGCAT_ALIAS` / `mySlugcatNames()` **逐字一致**：
+# 前端按存档原名（`White` / `Spear` / `Saint`…）算分母，地图这边必须算出同一套集合，
+# 否则「图上 90 间、清单里 74 间」永远对不上。注意**不能**复用 `bridge._canon_slugcat`
+# ——那是「房间 settings 文件名」的词表，不是 `CONDITIONAL LINKS` 的。
+_SLUG_ALIAS = {
+    "white": "survivor", "yellow": "monk", "red": "hunter", "night": "nightcat",
+    "spear": "spearmaster", "pale": "monk", "enot": "enot",
+}
+
+
+def canon_slugcat(slugcat):
+    key = re.sub(r"[\s\-_]", "", str(slugcat or "").strip().lower())
+    return _SLUG_ALIAS.get(key, key)
+
+
+def my_slugcat_names(slugcat):
+    """「我叫什么」：白猫既是 `WHITE` 也是 `SURVIVOR`（条件链接里两种写法都有）。"""
+    raw = str(slugcat or "").strip().upper()
+    canon = canon_slugcat(slugcat).upper()
+    if not raw:
+        return [canon] if canon else []
+    return [raw] if raw == canon else [raw, canon]
+
+
+# 房间名里带角色后缀（`GW_A21SAINT` / `LM_BRIDGE04ARTY`）：模组大多没写 CONDITIONAL
+# LINKS，只能靠「名字像某角色」+「在本层是孤岛」两条一起判。规则与前端 `ROOM_OWNER` 一致。
+_OWNER_RULES = (
+    (re.compile(r"SAINT"), ("SAINT",)),
+    (re.compile(r"ARTIFICER|ARTY"), ("ARTIFICER",)),
+    (re.compile(r"SPEARMASTER|SPEAR"), ("SPEARMASTER", "SPEAR")),
+    (re.compile(r"RIVULET"), ("RIVULET",)),
+    (re.compile(r"GOURMAND|GOURM"), ("GOURMAND",)),
+    (re.compile(r"HUNTER"), ("HUNTER",)),
+    (re.compile(r"NIGHT"), ("NIGHTCAT", "NIGHT")),
+)
+
+
+def room_owners(name):
+    """房间名暗示的角色集合；名字不带角色后缀返回 `None`。"""
+    up = str(name or "").upper()
+    for rx, cats in _OWNER_RULES:
+        if rx.search(up):
+            return cats
+    return None
 
 
 class Room(object):
@@ -44,7 +94,7 @@ class Room(object):
 
     __slots__ = ("name", "w", "h", "exits", "cameras", "cells", "objs",
                  "sub", "map_rect", "world", "order", "kind", "path",
-                 "variant_of", "is_variant", "eff", "tags")
+                 "variant_of", "is_variant", "is_gate", "eff", "tags")
 
     def __init__(self, name, w, h):
         self.name = name
@@ -62,6 +112,7 @@ class Room(object):
         self.path = ""
         self.variant_of = None   # 变体件的基名（`UW_A04RIV` → `UW_A04`）
         self.is_variant = False
+        self.is_gate = False     # 大门房（V1.24：会画进区域图，样式与房间不同）
         self.eff = None          # 有效区包围盒缓存，(x0,y0,x1,y1)；见 effective_bbox
         self.tags = ()           # 房间标签，见 `_room_tags`（W4 标注用）
 
@@ -264,6 +315,36 @@ def _room_dirs(layer):
     return dirs
 
 
+def _gate_dirs(layer):
+    """这一层能找门房间 `.txt` 的目录（V1.24）。
+
+    门房的地形**不在** `sl-rooms/`，而在 `world/gates/`——它是区域目录的**兄弟**：
+        world/sl-rooms  →  world/gates
+        world/sl        →  world/gates
+        modify/world/sl →  modify/world/gates      （模组自带的门）
+    以前门被整类跳过，所以没人踩到这个坑；现在要画门，必须把这条目录补进候选。
+    """
+    bases = []
+    src = layer.get("source") or {}
+    for d in (src.get("roomsDirs") or []):
+        if isinstance(d, str) and d:
+            bases.append(d)
+    for f in (src.get("files") or []):
+        if isinstance(f, dict) and isinstance(f.get("dir"), str) and f["dir"]:
+            bases.append(f["dir"])
+    if isinstance(src.get("path"), str) and src["path"]:
+        bases.append(src["path"])
+    out = []
+    for base in bases:
+        for cand in (os.path.join(os.path.dirname(base), "gates"),
+                     os.path.join(base, "gates")):
+            if os.path.isdir(cand):
+                key = os.path.normcase(os.path.abspath(cand))
+                if all(os.path.normcase(os.path.abspath(x)) != key for x in out):
+                    out.append(cand)
+    return out
+
+
 def _candidate_paths(dirs, name):
     """所有可能命中的路径，按目录顺序。"""
     out = []
@@ -325,65 +406,62 @@ def _field_merge(items):
     return fields
 
 
+def _variant_body(layer, campaign):
+    """`variants` 里这个战役的那一份（**键不区分大小写**）。
+
+    数据里的键是小写（`saint` / `rivulet` / `artificer` / `inv` / `spear`…），而存档传的是
+    原名 `Artificer` / `Spear`。V1.24 №7 修的真 bug：以前直接 `.get(campaign)`，
+    前端真实值永远命中不了 → GW 传 `Artificer` 仍是 124 间（等于角色筛选没开）。
+    """
+    variants = layer.get("variants") or {}
+    want = str(campaign or "").strip().lower()
+    if not want:
+        return {}
+    body = variants.get(want)
+    if isinstance(body, dict):
+        return body
+    for key, val in variants.items():
+        if str(key).strip().lower() == want and isinstance(val, dict):
+            return val
+    return {}
+
+
 def _variant_rooms(layers, campaign):
     """取该战役的房间表（`variants[campaign]["rooms"]`，值是地图矩形）。
 
     从最高层往下找第一个非空的——高层模组可以覆盖战役布局。
     """
     for layer in reversed(layers):
-        body = (layer.get("variants") or {}).get(campaign) or {}
+        body = _variant_body(layer, campaign)
         rooms = body.get("rooms") or {}
         if rooms:
             return rooms
     return {}
 
 
-def campaign_names(region_json):
-    """一个区域 JSON 里出现过哪些战役键（demo 的下拉框用）。"""
-    try:
-        with open(region_json, "r", encoding="utf-8") as fh:
-            data = json.load(fh)
-    except (OSError, ValueError):
-        return []
-    seen = []
-    for layer in data.get("layers") or []:
-        for k in (layer.get("variants") or {}):
-            if k and k not in seen:
-                seen.append(k)
-    return sorted(seen)
+def _layer_kept(layer, off, campaign):
+    """这一层参不参与装配（V1.24 №6）。
 
-
-def load_region(region_json, index_json=None, campaign=None, parser=None):
-    """读一个区域的房间全集（多层合并，同名取层序最高者）。
-
-    `campaign` 非空时按该战役的 `variants` 表装配：
-      * 只留下该战役地图上的房间（∪ 「任何一版地图都没有矩形」的房间）；
-      * `UW_A04RIV` 这类后缀件**顶替** `UW_A04`（节点名仍是基名，布局不重排）；
-      * 后缀件里空目标的出口，用基房间同一格位的出口补。
-
-    返回的 `rooms` 在主线模式下**已剔除**后缀变体件（UW 64 → 57）。
+    * 来源被熄灭 → 不要（`config` 里的 `_sources.json`，没登记的层一律当启用）；
+    * 「仅地图」层（有底图没有 world 文件）→ 只有它带着当前角色的地图变体时才要，
+      否则它的房间表是从地图矩形凑的，既不全也没有庇护所/大门标记。
+      判定与前端 `usableLayers()` 同口径。
     """
-    with open(region_json, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
+    lid = str(layer.get("id") or "")
+    if lid and lid in off:
+        return False
+    stats = layer.get("stats")
+    if isinstance(stats, dict) and "hasWorldFile" in stats and not stats.get("hasWorldFile"):
+        return bool(campaign and _variant_body(layer, campaign))
+    return True
 
-    sources = None
-    if index_json and os.path.isfile(index_json):
-        try:
-            with open(index_json, "r", encoding="utf-8") as fh:
-                sources = json.load(fh)
-        except ValueError:
-            sources = None
 
-    layers = sorted(data.get("layers") or [], key=lambda L: L.get("order") or 0)
-    gates = 0
-    # 目录候选要**跨层回退**：高层的同名房间经常只是「改了几个字段」，房间 .txt 仍
-    # 躺在官方目录里。只在高层自己的 roomsDirs 里找，会平白丢掉一半房间。
-    all_dirs = []
-    for layer in reversed(layers):
-        for d in _room_dirs(layer):
-            if d not in all_dirs:
-                all_dirs.append(d)
+def _merge_layers(layers):
+    """多层按字段合并 → `(merged, has_map, variant_of)`，形状与旧实现一致。
 
+    V1.24 起**不再剔掉 GATE_**：大门也是房间，要画进区域图（附在区域边界那间房上）。
+    没邻居的门（另一侧的房不在本区）不会留在 `rooms` 里，见 `load_region` 的 `gates_off`。
+    """
     per_name = {}
     has_map = {}
     for layer in layers:
@@ -391,9 +469,6 @@ def load_region(region_json, index_json=None, campaign=None, parser=None):
         for raw in (layer.get("rooms") or []):
             name = str(raw.get("name") or "").strip().upper()
             if not name:
-                continue
-            if is_gate(name):
-                gates += 1
                 continue
             per_name.setdefault(name, []).append((order, raw))
             mr = raw.get("map")
@@ -411,12 +486,14 @@ def load_region(region_json, index_json=None, campaign=None, parser=None):
         base, _suffix = split_variant(name)
         if base and base in merged and base != name:
             variant_of[name] = base
+    return merged, has_map, variant_of
 
-    # ---- 战役装配 ----
+
+def _campaign_view(merged, has_map, variant_of, layers, campaign):
+    """按战役装一遍 → `(keep, replaced)`：keep 是节点名集合，replaced 是「基名→后缀件」。"""
     replaced = {}          # 基名 → 后缀件名
     # 主线（没有战役）：后缀件是**别条战役的替换件**，不进图（UW 64 → 57）
     keep = set(merged) - set(variant_of)
-    hidden = []
     table = _variant_rooms(layers, campaign) if campaign else {}
     if campaign and table:
         vis = {str(k).strip().upper() for k in table}
@@ -435,7 +512,7 @@ def load_region(region_json, index_json=None, campaign=None, parser=None):
     if campaign:
         # 后缀探测兜底：没有表、或表里没列出的替换件，按「后缀像这个战役」认。
         # RIV 之于 rivulet、SAINT 之于 saint、ARTY 之于 artificer 都是前缀关系。
-        head = campaign.upper()
+        head = str(campaign).upper()
         for name in merged:
             base = variant_of.get(name)
             if not base or base not in keep:
@@ -443,6 +520,92 @@ def load_region(region_json, index_json=None, campaign=None, parser=None):
             suffix = split_variant(name)[1] or ""
             if suffix and (head.startswith(suffix) or suffix.startswith(head[:3])):
                 replaced.setdefault(base, name)
+    # 大门**不受战役地图表约束**：`variants[].rooms` 是从地图图块里抽的，门一般不在里面，
+    # 直接按表留房间会把整区的大门全删掉（V1.24 实测 SL 少 13 座）。
+    keep |= {nm for nm in merged if is_gate(nm)}
+    return keep, replaced
+
+
+def campaign_names(region_json):
+    """一个区域 JSON 里出现过哪些战役键（demo 的下拉框用）。"""
+    try:
+        with open(region_json, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    seen = []
+    for layer in data.get("layers") or []:
+        for k in (layer.get("variants") or {}):
+            if k and k not in seen:
+                seen.append(k)
+    return sorted(seen)
+
+
+def load_region(region_json, index_json=None, campaign=None, parser=None,
+                filters=None):
+    """读一个区域的房间全集（多层合并，同名取层序最高者）。
+
+    `campaign` 非空时按该战役的 `variants` 表装配：
+      * 只留下该战役地图上的房间（∪ 「任何一版地图都没有矩形」的房间）；
+      * `UW_A04RIV` 这类后缀件**顶替** `UW_A04`（节点名仍是基名，布局不重排）；
+      * 后缀件里空目标的出口，用基房间同一格位的出口补。
+
+    `filters`（V1.24 №6/№7）为 `None` 时**什么都不筛**——demo、对拍、形状评分走这条路；
+    工具主路径传一份：
+
+        {"off": ["mod:xxx"],       # 被熄灭的来源 id（№6，没登记的层当启用）
+         "role": "Artificer",      # 存档里的角色名（№7，后端自己归一）
+         "strict": True,           # 严格口径（config.ui.roomStrict）
+         "ex": ["GW_A21"]}         # 手工剔除（config.ui.roomExcluded）
+
+    过滤必须在**装配阶段**做：布局、BFS 根、连通块、配色都跟着房间集合走，
+    画完再摘节点会留洞。返回里的 `color_rooms` 是**筛选前**的全量房间（取色用），
+    这样切来源/切角色时颜色不会跟着跳。
+
+    返回的 `rooms` 在主线模式下**已剔除**后缀变体件（UW 64 → 57）。
+    """
+    with open(region_json, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    sources = None
+    if index_json and os.path.isfile(index_json):
+        try:
+            with open(index_json, "r", encoding="utf-8") as fh:
+                sources = json.load(fh)
+        except ValueError:
+            sources = None
+
+    all_layers = sorted(data.get("layers") or [], key=lambda L: L.get("order") or 0)
+    flt = filters if isinstance(filters, dict) else None
+    off = {str(x) for x in (flt or {}).get("off") or []}
+    layers = [L for L in all_layers if _layer_kept(L, off, campaign)]
+    gates = sum(1 for L in layers for raw in (L.get("rooms") or [])
+                if is_gate(str(raw.get("name") or "").strip().upper()))
+    # 目录候选要**跨层回退**：高层的同名房间经常只是「改了几个字段」，房间 .txt 仍
+    # 躺在官方目录里。只在高层自己的 roomsDirs 里找，会平白丢掉一半房间。
+    # 这里用**全量层**：被熄灭的来源也可能揣着别的层要用的房间文件。
+    all_dirs = []
+    for layer in reversed(all_layers):
+        for d in _room_dirs(layer):
+            if d not in all_dirs:
+                all_dirs.append(d)
+    # 门房的地形在 `world/gates/`（区域目录的兄弟），与普通房间目录不重叠
+    for layer in reversed(all_layers):
+        for d in _gate_dirs(layer):
+            if d not in all_dirs:
+                all_dirs.append(d)
+
+    merged, has_map, variant_of = _merge_layers(layers)
+    keep, replaced = _campaign_view(merged, has_map, variant_of, layers, campaign)
+
+    # 「没被筛过」的那一版只给两件事用：取色（切来源时配色不该跳）与孤岛判定
+    # （度数用过滤前的邻居数，避免 №6/№7 两个筛选互相放大，见 `_filter_rooms`）。
+    if flt:
+        merged_all, has_map_all, variant_of_all = _merge_layers(all_layers)
+        keep_all, _replaced_all = _campaign_view(merged_all, has_map_all, variant_of_all,
+                                                 all_layers, campaign)
+    else:
+        merged_all, variant_of_all, keep_all = merged, variant_of, keep
 
     rooms = []
     missing_file = []
@@ -464,6 +627,7 @@ def load_region(region_json, index_json=None, campaign=None, parser=None):
         room.order = _order
         room.kind = (raw.get("layer") or "") if raw else ""
         room.path = path
+        room.is_gate = is_gate(name)
         room.cameras = cams
         room.cells = cells
         room.objs = objs          # 注入解析器给的 {} 也算「已解析」，room_objects 不再读文件
@@ -483,20 +647,55 @@ def load_region(region_json, index_json=None, campaign=None, parser=None):
             {"name": name}, world_tags)
         rooms.append(room)
 
+    # 门的 txt 找不到（模组只在 world 里登了名字）：不算「缺地形」，也不算绘制失败——
+    # 它本来是"区域之外"的门，进不了图是正常的。清单里仍能看到并点开房间卡。
+    gate_missing = [nm for nm in missing_file if is_gate(nm)]
+    missing_file = [nm for nm in missing_file if not is_gate(nm)]
+
+    dropped = None
+    color_rooms = None
+    if flt:
+        rooms, dropped = _filter_rooms(rooms, merged, merged_all, keep_all,
+                                       variant_of_all, filters)
+        # 「因为来源被熄灭而根本没装进来」的房间也记一笔，否则
+        # `rooms_total - len(rooms)` 会对不上 `dropped` 的合计（界面上要能自洽）
+        dropped["source"] = max(0, len(keep_all) - len(keep))
+        color_rooms = _color_rooms(rooms, merged_all, keep_all, all_dirs)
+
+    # ---- 大门：只留「在本区内至少有一条连线」的 ----
+    # 另一侧的房在别的区域（`GATE_SL_MS` 只连 DM/MS 的房间）的门，图上没有可贴的地方；
+    # 硬画会被布局当孤岛摆到主图右侧的「停车场」，整张图被拉宽、所有房间缩一圈。
+    by_name = {r.name for r in rooms}
+    linked = set()
+    for room in rooms:
+        for _x, _y, to in room.exits:
+            if to in by_name:
+                linked.add(room.name)
+                linked.add(to)
+    gates_off = sorted(r.name for r in rooms if r.is_gate and r.name not in linked)
+    if gates_off:
+        gone = set(gates_off)
+        rooms = [r for r in rooms if r.name not in gone]
+    dropped = dropped or {"source": 0, "exclusive": 0, "hidden": 0, "manual": 0, "role": 0}
+    dropped["gate"] = len(gates_off) + len(gate_missing)
+
     hidden = sorted(set(merged) - keep)
     # 工具侧 JSON 没有 `name`，只有 `displayName`（英文）/ `nameZh`（中文）；
     # demo 的 `name` 留着兜底，这样两边都能读，页头不会空着。
     display = str(data.get("displayName") or "").strip()
     zh = str(data.get("nameZh") or "").strip()
-    return {
+    out = {
         "code": (data.get("code") or os.path.splitext(os.path.basename(region_json))[0]).upper(),
         "name": data.get("name") or display or zh,
         "displayName": display,
         "nameZh": zh,
         "rooms": rooms,
+        "rooms_total": len(keep_all),
+        "dropped": dropped or {"source": 0, "exclusive": 0, "hidden": 0, "manual": 0, "role": 0},
         "missing": missing_file,
         "gates": gates,
-        "gate_locks": _gate_locks(layers),
+        # 进了 keep 但没上图的大门：`dropped["gate"]` 的两部分之一（另一部分是没有 txt）
+        "gates_off": gates_off,
         "campaign": campaign or "",
         "replaced": sorted(replaced.items()),
         "hidden": hidden,
@@ -504,6 +703,154 @@ def load_region(region_json, index_json=None, campaign=None, parser=None):
         "layers": [{"order": L.get("order"), "kind": (L.get("source") or {}).get("kind"),
                     "rooms": len(L.get("rooms") or [])} for L in layers],
     }
+    if color_rooms:
+        out["color_rooms"] = color_rooms
+    return out
+
+
+class _ColorRoom(object):
+    """只给 `colors.for_region` 用的轻量房间：路径 + 子区域名，不带地形。
+
+    为什么不用真 `Room`：取色的房间表要**过滤前**的全量（切来源配色不跳），
+    为那些马上要被剔掉的房间解析一遍 .txt 是白花 0.4–0.6 s。
+    """
+
+    __slots__ = ("name", "path", "sub")
+
+    def __init__(self, name, path, sub):
+        self.name = name
+        self.path = path
+        self.sub = sub
+
+
+def _name_index(dirs):
+    """目录里所有房间 txt 的**小写名 → 路径**索引（只扫一遍目录）。
+
+    取色只需要路径，不需要解析；逐个房间走 `_candidate_paths` 会退化成
+    「房间数 × 目录数」次 `listdir`（GW 那种 11 层 124 间的区能白花好几百毫秒）。
+    """
+    idx = {}
+    for d in dirs:
+        if not isinstance(d, str) or not os.path.isdir(d):
+            continue
+        try:
+            for fn in os.listdir(d):
+                if fn.lower().endswith(".txt"):
+                    idx.setdefault(fn[:-4].lower(), os.path.join(d, fn))
+        except OSError:
+            continue
+    return idx
+
+
+def _color_rooms(rooms, merged_all, keep_all, all_dirs):
+    """取色用的房间表：战役范围内**未经过 №6/№7 筛选**的全量房间，名字排序。
+
+    大门**不参与取色**：门房在 `world/gates/` 下、调色板跟区域主体不是一回事；
+    而且 `colors.for_region` 用 `rooms[0].path` 反推区域目录，`GATE_*` 名字恰好
+    排在 `GW_*` 前面——让它当第一间，整个区的配色会被算到门房间的目录上去。
+    """
+    path_by_name = {r.name: r.path for r in rooms}
+    index = None
+    out = []
+    for name in sorted(keep_all):
+        if is_gate(name):
+            continue
+        path = path_by_name.get(name)
+        if not path:
+            if index is None:
+                index = _name_index(all_dirs)
+            path = index.get(str(name).lower())
+        raw = (merged_all.get(name) or (0, {}))[1]
+        out.append(_ColorRoom(name, path, raw.get("subregion")))
+    # `colors` 拿 `rooms[0].path` 找区域目录；第一个恰好没路径就把有路径的挪上来
+    if out and not out[0].path:
+        for i, cr in enumerate(out):
+            if cr.path:
+                out[0], out[i] = cr, out[0]
+                break
+    return out
+
+
+def _clean_roles(values):
+    """`exclusive` / `hidden` 里的角色名清洗（V1.24 №7）。
+
+    模组写的 `{!PostBathScene,!ToySending}Watcher` 被旧解析器按 `,` 切碎成
+    `["{POSTBATHSCENE", "!TOYSENDING}WATCHER"]`（`mod_importer` 已修，但已落盘的数据还在）。
+    这里兜一次：`}` 之后那段才是角色名，只有 `{` 没有 `}` 的是剧情标记碎片，丢掉。
+    """
+    out = []
+    for value in values or []:
+        token = str(value or "").strip().upper()
+        if not token:
+            continue
+        if "}" in token:
+            token = token.rsplit("}", 1)[1]
+        elif "{" in token:
+            continue
+        token = token.strip("{}! ").strip()
+        if token and token not in out:
+            out.append(token)
+    return out
+
+
+def _degree_map(merged, keep, variant_of):
+    """每间房在「全量层」里的邻居数（孤岛判定用）。
+
+    度数**故意用过滤前**的邻居：先按来源筛再算度数会让「只连着别的来源」的房间
+    突然变成孤岛，№6/№7 两个筛选互相放大。变体件空目标的出口没做基名回填，
+    这里只求「有没有邻居」，精度足够。
+    """
+    deg = {}
+    for name in keep:
+        raw = (merged.get(name) or (0, {}))[1]
+        seen = set()
+        for e in raw.get("exits") or []:
+            to = str(e.get("to") or "").strip().upper()
+            if not to:
+                continue
+            to = _base_name(to, keep)
+            if to != name and to in keep:
+                seen.add(to)
+        deg[name] = len(seen)
+    return deg
+
+
+def _filter_rooms(rooms, merged, merged_all, keep_all, variant_of_all, filters):
+    """№6/№7 的筛选口径（照抄前端 `applyConditional()`），返回 `(留下的房间, 计数)`。
+
+    | 判据 | 是否受「严格」影响 |
+    |---|---|
+    | `exclusive`：当前角色不在名单 → 剔 | 否 |
+    | `hidden`：当前角色在名单 → 剔 | 否 |
+    | `config.ui.roomExcluded` 命中 → 剔 | 是 |
+    | 名字带别的角色后缀 + 在本层是孤岛 → 剔 | 是 |
+    """
+    role = str(filters.get("role") or "")
+    mine = set(my_slugcat_names(role))
+    strict = bool(filters.get("strict", True))
+    manual = {str(x).strip().upper() for x in (filters.get("ex") or []) if str(x).strip()}
+    deg = _degree_map(merged_all, keep_all, variant_of_all)
+    out = []
+    dropped = {"exclusive": 0, "hidden": 0, "manual": 0, "role": 0}
+    for room in rooms:
+        raw = (merged.get(room.name) or (0, {}))[1]
+        exclusive = _clean_roles(raw.get("exclusive"))
+        if exclusive and not (mine & set(exclusive)):
+            dropped["exclusive"] += 1
+            continue
+        hidden = _clean_roles(raw.get("hidden"))
+        if hidden and (mine & set(hidden)):
+            dropped["hidden"] += 1
+            continue
+        if strict and room.name in manual:
+            dropped["manual"] += 1
+            continue
+        owners = room_owners(room.name)
+        if strict and owners and not (mine & set(owners)) and deg.get(room.name, 0) <= 0:
+            dropped["role"] += 1
+            continue
+        out.append(room)
+    return out, dropped
 
 
 def _merge_exits(src_name, src_raw, name, base_raw, keep):
@@ -564,9 +911,6 @@ def is_gate(name):
 _WORLD_CACHE: "OrderedDict[tuple, dict]" = OrderedDict()
 _WORLD_CACHE_MAX = 32
 _COND_PREFIX = re.compile(r"^\{[^}]*\}")
-_LOCK_LINE = re.compile(r"^\s*([A-Za-z0-9_\-]+)\s*:\s*(\d+)\s*:\s*(\d+)\s*$")
-
-
 def _read_text(path):
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as fh:
@@ -649,47 +993,6 @@ def _layer_world_tags(layers):
         for path in _world_files(layer):
             tags.update(_parse_world_tags(path))
     return tags
-
-
-def _gate_locks(layers):
-    """业力门锁：`{GATE_XX_YY: (左, 右)}`，取自区域目录旁边的 `gates/locks.txt`。
-
-    区域目录是 `…/world/su`，门目录是它旁边的 `…/world/gates`（大小写不固定，
-    模组里还可能叫 `Gates`）。行格式 `GATE_SU_DS : 4 : 2`，数字是两侧的业力等级。
-    """
-    out = {}
-    seen = set()
-    for layer in layers:
-        base = (layer.get("source") or {}).get("path")
-        if not isinstance(base, str):
-            continue
-        parent = os.path.dirname(base.rstrip("\\/"))
-        if not parent or parent in seen:
-            continue
-        seen.add(parent)
-        path = ""
-        try:
-            for fn in os.listdir(parent):
-                if fn.lower() == "gates" or fn.lower() == "locks.txt":
-                    cand = os.path.join(parent, fn)
-                    if os.path.isdir(cand):
-                        for sub in os.listdir(cand):
-                            if sub.lower() == "locks.txt":
-                                path = os.path.join(cand, sub)
-                                break
-                    elif fn.lower() == "locks.txt":
-                        path = cand
-                    if path:
-                        break
-        except OSError:
-            continue
-        if not path:
-            continue
-        for line in _read_text(path).split("\n"):
-            m = _LOCK_LINE.match(line)
-            if m:
-                out[m.group(1).upper()] = (int(m.group(2)), int(m.group(3)))
-    return out
 
 
 def _room_tags(raw, world_tags):
