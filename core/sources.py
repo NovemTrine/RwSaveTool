@@ -26,9 +26,20 @@ SCHEMA = 1
 # 前三个是官方内置来源，始终存在；模组来源在导入时按需创建
 DEFAULT_SOURCES = [
     {"id": "official:base", "name": "Original", "kind": "original", "order": 0},
-    {"id": "official:moreslugcats", "name": "Downpour", "kind": "downpour", "order": 10},
-    {"id": "official:watcher", "name": "Watcher", "kind": "watcher", "order": 20},
+    {"id": "official:moreslugcats", "name": "Downpour（倾盆大雨）", "kind": "downpour", "order": 10},
+    {"id": "official:watcher", "name": "The Watcher（观望者）", "kind": "watcher", "order": 20},
 ]
+
+# 官方层「亦称」：玩家更熟悉、但官方数据源文件里没写的那个名字。
+# 不塞进 `name` 是因为 chip 会挤爆（`Downpour（倾盆大雨）· 亦称 More Slugcats Expansion` 有 30 字），
+# 放进 tooltip 一样能说清楚「这俩是同一个东西」。
+AKA = {
+    "official:moreslugcats": "More Slugcats Expansion",
+}
+
+
+def aka_of(layer_id: str) -> str:
+    return AKA.get(str(layer_id or ""), "")
 
 # 导入对话框里的快捷标签
 PRESETS = ["Original", "Downpour", "Watcher", "Mod"]
@@ -91,6 +102,114 @@ def kind_of(layer_id: str, layer_kind: str | None = None) -> str:
     return "mod"
 
 
+# --------------------------------------------------------------------------
+# 等价层折叠（v1.3.2 №8）
+#
+# MSE 与 Downpour、The Watcher 与 Watcher 是**同一份内容的两条来源**：
+# 一个来自游戏自带的 `consolefiles/`（装游戏就有），一个来自模组目录（卸了就没）。
+# 两层都点亮时，同一批房间被算了两次，「来源 N/M」也重复。
+#
+# 判据不是相似度，而是**并集是否变化**：
+#     模组层房间集 ⊆ 官方层房间集  →  熄灭它，分母不变、地图不变，纯减噪
+# 只要有一个区域不满足，整层就不折叠（保守：并集真的会变）。
+# 实测：`moreslugcats` 22/22 区、`watcher` 35/35 区，全部是子集。
+# --------------------------------------------------------------------------
+
+_dup_cache: dict[str, str] | None = None
+
+
+def invalidate_duplicates() -> None:
+    """区域数据变了（导入 / 删层 / 删来源）→ 折叠判定作废。"""
+    global _dup_cache
+    _dup_cache = None
+
+
+def _scan_layer_rooms() -> list[tuple[str, frozenset[str]]]:
+    """直接读 `region_data/*.json` 的 `layers[].id/rooms`，**不经过 `_decorate`**。
+
+    为什么不用 `region_store.all_regions()`：`_decorate` 会回调
+    `sources.registry_enabled()`，而这里又要判定折叠 —— 转一圈就是无限递归。
+    """
+    out: list[tuple[str, frozenset[str]]] = []
+    try:
+        names = os.listdir(paths.data_dir())
+    except OSError:
+        return out
+    for name in names:
+        if not name.lower().endswith(".json") or name.startswith("_"):
+            continue
+        try:
+            with open(os.path.join(paths.data_dir(), name), "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        for layer in data.get("layers") or []:
+            if not isinstance(layer, dict):
+                continue
+            lid = str(layer.get("id") or "")
+            if not lid:
+                continue
+            rooms = frozenset(
+                str(r.get("name") or "").upper()
+                for r in (layer.get("rooms") or [])
+                if isinstance(r, dict) and r.get("name")
+            )
+            out.append((lid, rooms))
+    return out
+
+
+def duplicate_pairs() -> dict[str, str]:
+    """`{等价模组层 id: 它对应的官方层 id}`。
+
+    键是「该被默认熄灭的那一层」，值是「保留的那一层」。
+    只包含**所有区域都满足子集**的对子——有一个区不满足就整层不折叠。
+    """
+    global _dup_cache
+    if _dup_cache is not None:
+        return dict(_dup_cache)
+
+    layers = _scan_layer_rooms()
+    # 同一次扫描里，同 tail 的层可能出现在多个区域：先按 tail 归并
+    by_tail: dict[str, dict[str, list[frozenset[str]]]] = {}
+    for lid, rooms in layers:
+        if ":" not in lid:
+            continue
+        group, tail = lid.split(":", 1)
+        by_tail.setdefault(tail.lower(), {}).setdefault(group, []).append(rooms)
+
+    ok: dict[str, str] = {}
+    conflicted: set[str] = set()
+    for tail, groups in by_tail.items():
+        official = groups.get("official")
+        mod = groups.get("mod")
+        if not official or not mod:
+            continue
+        mod_id = f"mod:{tail}"
+        off_id = f"official:{tail}"
+        # 每个区域各判一次；只要出现「模组有、官方没有」的房间就放弃
+        good = 0
+        bad = False
+        for mod_rooms in mod:
+            if not mod_rooms:
+                continue
+            covered = any(mod_rooms <= off_rooms for off_rooms in official if off_rooms)
+            if covered:
+                good += 1
+            else:
+                bad = True
+        if bad:
+            conflicted.add(mod_id)
+        elif good:
+            ok[mod_id] = off_id
+
+    for lid in conflicted:
+        ok.pop(lid, None)
+    _dup_cache = ok
+    return dict(ok)
+
+
 def default_name(layer_id: str, layer_kind: str | None = None, hint: str | None = None) -> str:
     if layer_id in _PACK_KIND:
         for item in DEFAULT_SOURCES:
@@ -115,26 +234,56 @@ def _entries() -> dict[str, dict]:
             "kind": item["kind"],
             "enabled": True,
             "order": item["order"],
+            "userSet": False,
         }
     for item in data.get("sources") or []:
         lid = str(item.get("id") or "")
         if not lid:
             continue
         base = out.get(lid) or {}
+        # 官方内置来源（Original / Downpour / The Watcher）的显示名以 DEFAULT_SOURCES 为准：
+        # 老版本的 `_sources.json` 里存着旧名（"Watcher"），不覆盖就永远改不过来。
+        # 用户主动改过名的（`userName`）另说。
+        if lid in _PACK_KIND and not item.get("userName") and base.get("name"):
+            name = base["name"]
+        else:
+            name = item.get("name") or base.get("name") or lid
         out[lid] = {
             "id": lid,
-            "name": item.get("name") or base.get("name") or lid,
+            "name": name,
             "kind": item.get("kind") or base.get("kind") or kind_of(lid),
             "enabled": bool(item.get("enabled", base.get("enabled", True))),
             "order": int(item.get("order", base.get("order", _KIND_ORDER.get(kind_of(lid), 100)))),
+            "userSet": bool(item.get("userSet")),
+            "userName": bool(item.get("userName")),
         }
+
+    # №8：等价层折叠。`dupOf` = 这一层和谁重复；`folded` = 按默认口径是否被隐藏。
+    # `userSet` 是**用户点过开关**的痕迹（`set_enabled` 才写），
+    # 有它就尊重用户的选择，没有才按折叠规则默认熄灭。
+    dups = duplicate_pairs()
+    for lid, entry in out.items():
+        dup = dups.get(lid)
+        entry["userSet"] = bool(entry.get("userSet"))
+        entry["dupOf"] = dup
+        entry["folded"] = bool(dup) and not entry["userSet"]
     return out
 
 
+_PERSIST_KEYS = ("id", "name", "kind", "enabled", "order", "userSet", "userName")
+
+
 def save_entries(entries: dict[str, dict]) -> bool:
+    """落盘只写白名单字段：`dupOf` / `folded` 是每次算出来的派生量，写进去会变成脏数据。"""
     payload = {
         "schema": SCHEMA,
-        "sources": sorted(entries.values(), key=lambda e: (int(e.get("order") or 0), str(e.get("id")))),
+        "sources": [
+            {k: e.get(k) for k in _PERSIST_KEYS if e.get(k) is not None}
+            for e in sorted(
+                entries.values(),
+                key=lambda e: (int(e.get("order") or 0), str(e.get("id"))),
+            )
+        ],
     }
     return _write(payload)
 
@@ -144,8 +293,11 @@ def ensure(layer_id: str, layer_kind: str | None = None, name: str | None = None
     entries = _entries()
     current = entries.get(layer_id)
     if layer_id in _PACK_KIND:
-        # 官方来源用固定默认名（Original / Downpour / Watcher），除非用户改过
-        want_name = (current or {}).get("name") or default_name(layer_id, layer_kind)
+        # 官方来源用固定默认名（Original / Downpour / The Watcher），除非用户改过名
+        if (current or {}).get("userName"):
+            want_name = current["name"]
+        else:
+            want_name = default_name(layer_id, layer_kind)
     else:
         want_name = name or (current or {}).get("name") or default_name(layer_id, layer_kind)
     entry = {
@@ -155,7 +307,9 @@ def ensure(layer_id: str, layer_kind: str | None = None, name: str | None = None
         "enabled": bool((current or {}).get("enabled", True)),
         "order": int((current or {}).get("order", _KIND_ORDER.get(kind_of(layer_id, layer_kind), 100))),
     }
-    if current != entry:
+    # 比较裸字段：`_entries()` 现在带 `dupOf`/`folded`，直接比较会永远不相等、每次调用都写盘
+    bare = {k: (current or {}).get(k) for k in _PERSIST_KEYS if (current or {}).get(k) is not None}
+    if bare != entry:
         entries[layer_id] = entry
         save_entries(entries)
     return entry
@@ -169,15 +323,19 @@ def rename(layer_id: str, name: str) -> dict:
     entry = entries.get(layer_id) or ensure(layer_id)
     entry = dict(entries.get(layer_id) or entry)
     entry["name"] = name
+    entry["userName"] = True
     entries[layer_id] = entry
     ok = save_entries(entries)
     return {"ok": ok, "source": entry} if ok else {"ok": False, "error": "写入失败（目录不可写）"}
 
 
 def set_enabled(layer_id: str, enabled: bool) -> dict:
+    """用户手动点亮 / 熄灭。同时记 `userSet`——之后折叠规则不再覆盖他的选择。"""
     entries = _entries()
     entry = dict(entries.get(layer_id) or ensure(layer_id))
     entry["enabled"] = bool(enabled)
+    entry["userSet"] = True
+    entry["folded"] = False
     entries[layer_id] = entry
     ok = save_entries(entries)
     return {"ok": ok, "source": entry} if ok else {"ok": False, "error": "写入失败（目录不可写）"}
@@ -287,8 +445,17 @@ def registry() -> dict[str, dict]:
 
 
 def registry_enabled() -> dict[str, dict]:
-    return _entries()
+    """注册表 + **生效的** enabled（等价层默认算熄灭）。给装饰层用。"""
+    out = _entries()
+    for entry in out.values():
+        if entry.get("folded"):
+            entry["enabled"] = False
+    return out
 
 
 def enabled_map() -> dict[str, bool]:
-    return {item["id"]: bool(item.get("enabled", True)) for item in _entries().values()}
+    """来源 id → 是否参与计算（等价层默认熄灭）。"""
+    return {
+        item["id"]: (False if item.get("folded") else bool(item.get("enabled", True)))
+        for item in _entries().values()
+    }

@@ -4,7 +4,7 @@
 
 检查内容：
     1. 业力显示 = 存档 0 基 +1（White 8/10、Saint 2/10、Artificer 1/1、新战役 1/5）
-    2. 分数：白猫基础分 / 击杀分 / 通行证乘数
+    2. 分数：白猫基础分 / 击杀分 / **无通行证乘数**（v1.3.2 §28 起 total = round(base × saint)）
     3. 击杀页：没有「随身物品」、有环形图与滑块、Top N 合并「其他」
     4. 概览页：重要珍珠搬到「收集品」小节
     5. 全局解锁页：各战役统计表（总时长 / 存活占比 / 分数），不再有「数值 A/B」
@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import time
@@ -85,7 +86,7 @@ def main() -> int:
             js("var s=[].slice.call(document.querySelectorAll('#camplist .camp')).filter("
                "function(e){return /White/.test(e.textContent);})[0]; if(s) s.click();")
             time.sleep(0.9)
-            js("var tb=document.querySelector('[data-tab=\"kills\"]'); if(tb) tb.click();")
+            js("var tb=document.querySelector('[data-tab=\"other\"]'); if(tb) tb.click();")
             time.sleep(1.2)
             out["kills"] = loads(js(
                 "JSON.stringify((function(){"
@@ -118,8 +119,8 @@ def main() -> int:
                "sl.dispatchEvent(new Event('input',{bubbles:true}));}")
             time.sleep(0.6)
 
-            # ---- 全局解锁页 ----
-            js("var tb=document.querySelector('[data-tab=\"global\"]'); if(tb) tb.click();")
+            # ---- 收集页（v1.3.2：原「全局解锁」并入「收集」） ----
+            js("var tb=document.querySelector('[data-tab=\"collect\"]'); if(tb) tb.click();")
             time.sleep(1.2)
             out["global"] = loads(js(
                 "JSON.stringify((function(){"
@@ -161,7 +162,26 @@ def main() -> int:
     for name in ("White", "Saint", "Artificer"):
         s = sc.get(name) or {}
         print(f"score[{name}]:", {k: s.get(k) for k in
-              ("base", "killScore", "multiplier", "saint", "total", "unknownKinds", "groups", "karma", "karmaCap")})
+              ("base", "killScore", "saint", "total", "unknownKinds", "groups", "karma", "karmaCap")})
+
+    # ---- 分数口径（§28）：没有通行证乘数，total 只能是 base × saint ----
+    # 用 floor(x+0.5) 而不是内置 round()：JS 的 Math.round 是「.5 向上」，Python 是银行家舍入。
+    fails = []
+    for name in ("White", "Saint", "Artificer"):
+        s = sc.get(name) or {}
+        base, saint, total = s.get("base"), s.get("saint"), s.get("total")
+        if base is None or saint is None or total is None:
+            fails.append(f"{name}: 缺 base/saint/total")
+            continue
+        want = int(math.floor(base * saint + 0.5))
+        if total != want:
+            fails.append(f"{name}: total={total} 应为 {want}（{base} × {saint}）")
+        if "multiplier" in s:
+            fails.append(f"{name}: 仍有 multiplier 字段（§28 应删）")
+    if fails:
+        print("分数口径 FAIL:", fails)
+        return 1
+    print("分数口径 OK：total = round(base × saint)，已无通行证乘数")
     print("overview:", json.dumps(out.get("overview"), ensure_ascii=False))
     print("kills:", json.dumps(out.get("kills"), ensure_ascii=False))
     print("killsAll:", json.dumps(out.get("killsAll"), ensure_ascii=False))

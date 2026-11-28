@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -79,7 +80,9 @@ _REGMA_RAW_MAX = 1
 # 13 = V1.24（№13：杆子色不再固定，改成「该子区域结构色再压一档」`--rg-b`，逐房间下发）；
 # 14 = V1.25（№14：杆子格不再剥掉底下的 `c`/`s`，底色回到结构色；№13 的派生杆子色**已回滚**成固定色）；
 # 15 = V1.25（№15：门点从框边界改画在管道口 E 上，连线端点同步；布局与 `pa/pb` 不变）。
-_REGMA_RENDER_V = 15
+# 16 = v1.3.2（№8：等价来源折叠——MSE↔Downpour、The Watcher↔Watcher 默认只留官方层。
+#      筛选口径本来就进 key，但这次「哪些层算来源」的语义变了，索性一起把版本推上去）。
+_REGMA_RENDER_V = 16
 
 
 def _room_colors(code: str, geo: dict, region: dict | None) -> dict | None:
@@ -142,11 +145,69 @@ def _layout_opts(opts: dict | None) -> dict:
     return {k: v for k, v in opts.items() if k not in _COLOR_OPTS}
 
 
+def _room_set_sig(code: str) -> str:
+    """「这套来源筛出来的是哪些房间」的指纹（№7，v1.3.2）。
+
+    为什么要它：布局缓存键原来含 `flt.off`（熄灭了哪几个来源），于是**每换一个来源
+    组合就是新 key**——哪怕并集一间房都没变（MSE 的模组层与官方层、Watcher 的残缺
+    副本都是这种情况）。缓存只有 6 格，来回切两次就全 miss，每次重排 0.6–2.6 s。
+
+    改成按「装配结果」取指纹：房间名 + 子区域 + 地图矩形 + 门位。只要两份来源组合
+    导出的房间表一模一样，指纹就一样 → 直接复用布局，不重排、不闪。
+
+    `order` 刻意不进指纹：官方层与模组层内容相同时，谁赢都不影响几何，
+    进了反而让「熄掉模组层」变成一次假重排。
+    """
+    import hashlib
+
+    from . import region_store
+
+    region = region_store.get_region(code)
+    if not region:
+        return ""
+
+    best: dict[str, tuple] = {}
+    for layer in region.get("layers") or []:
+        if not layer.get("enabled") or layer.get("mapOnly"):
+            continue
+        order = int(layer.get("order") or 0)
+        for room in layer.get("rooms") or []:
+            name = str(room.get("name") or "").upper()
+            if not name:
+                continue
+            mr = room.get("map") or {}
+            exits = tuple(sorted(
+                (round(float(e.get("x") or 0), 2), round(float(e.get("y") or 0), 2),
+                 str(e.get("to") or "").upper())
+                for e in (room.get("exits") or [])
+                if isinstance(e, dict)
+            ))
+            rec = (
+                str(room.get("subregion") or ""),
+                bool(room.get("shelter")),
+                bool(room.get("gate")),
+                (mr.get("x"), mr.get("y"), mr.get("w"), mr.get("h")),
+                exits,
+            )
+            cur = best.get(name)
+            if cur is None or order >= cur[0]:
+                best[name] = (order, rec)
+
+    parts = [f"{name}={rec}" for name, (_order, rec) in sorted(best.items())]
+    return hashlib.sha1("\n".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
 def _regmap_key(code: str, slugcat: str, opts: dict | None) -> str:
     # `_REGMA_RENDER_V` 也进 key：页面 F5 重载时 Python 进程还活着，内存缓存不会清，
     # 不带版本号就会出现"改了画法、页面上还是旧图"。
+    o = dict(opts or {})
+    flt = o.get("flt")
+    if isinstance(flt, dict) and flt.get("sig"):
+        # `off` 换成**房间表指纹**（`sig` 本来就在 flt 里，这里只是把 off 摘掉）。
+        # `flt` 原件仍会传给 `load_region`，只是不再整份进 key。
+        o["flt"] = {k: v for k, v in flt.items() if k != "off"}
     return json.dumps({"c": str(code).upper(), "s": str(slugcat or "").upper(),
-                       "o": opts or {}, "v": _REGMA_RENDER_V},
+                       "o": o, "v": _REGMA_RENDER_V},
                       sort_keys=True, default=str)
 
 
@@ -181,6 +242,8 @@ def _regmap_filters(code: str, slugcat: str) -> dict:
         "role": str(slugcat or ""),
         "strict": bool(ui.get("roomStrict", True)),
         "ex": sorted({str(n).strip().upper() for n in ex if str(n).strip()}),
+        # №7：房间表指纹。只用于**缓存键**，`load_region` 不看它。
+        "sig": _room_set_sig(code),
     }
 
 
@@ -416,6 +479,7 @@ class Api:
                 "message": save_result["needsConfirm"][0].get("error"),
                 "path": path,
             }
+
 
         cfg = paths.load_config()
         dirs = list(cfg.get("importDirs") or [])
@@ -1048,6 +1112,39 @@ class Api:
             return {"ok": True, "path": target}
         except Exception as exc:
             return {"ok": False, "error": str(exc), "path": target}
+
+    # ------------------------------------------------------------------
+    # 外链（v1.3.2 №9）：Wiki 之类的固定链接交给系统浏览器
+    # ------------------------------------------------------------------
+    # 为什么不让前端用 <a target="_blank">：pywebview / WebView2 不保证把新窗口请求
+    # 交给系统浏览器，常见表现是"点了没反应"。
+    # 为什么要白名单：这个方法是页面 JS 可直接调的；若允许任意 URL，一旦页面被注入
+    # 或被改过，它就成了"任意 URL 打开器"（本项目 SECURITY_AUDIT 有过先例）。
+    ALLOWED_URL_HOSTS = ("rainworld.miraheze.org",)
+
+    def open_url(self, url: str) -> dict:
+        from urllib.parse import urlparse
+
+        text = str(url or "").strip()
+        if not text:
+            return {"ok": False, "error": "链接为空"}
+        if not text.lower().startswith("https://"):
+            return {"ok": False, "error": "只允许 https 链接"}
+        try:
+            host = (urlparse(text).hostname or "").lower()
+        except ValueError as exc:
+            return {"ok": False, "error": f"链接无法解析：{exc}"}
+        if not any(host == h or host.endswith("." + h) for h in self.ALLOWED_URL_HOSTS):
+            return {"ok": False, "error": f"不在白名单内：{host or text[:40]}"}
+        try:
+            import webbrowser
+
+            # open() 的返回值不可靠（Windows 上即使打开了也可能给 False），
+            # 所以不拿它判失败，只回传本机情况供排查。
+            opened = webbrowser.open(text)
+            return {"ok": True, "url": text, "opened": bool(opened)}
+        except Exception as exc:  # noqa: BLE001 - 桥接层不抛
+            return {"ok": False, "error": str(exc)}
 
     # ------------------------------------------------------------------
     # W5b 导出：由后端写文件

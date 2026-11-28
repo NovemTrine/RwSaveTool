@@ -1,6 +1,6 @@
 """自定义译名（覆盖内置中文名）。
 
-内置译名写在 `ui/rw_gui.html` 里（角色 / 生物 / 区域 / 通行证 / 阵营五张表），
+内置译名写在 `ui/rw_gui.html` 里（角色 / 生物 / 区域 / 阵营四张表），
 用户觉得不合适时可以在界面里逐条改，改过的条目存到 `region_data/_translations.json`，
 读取时覆盖内置表 —— 不修改内置数据，随时可「恢复默认」。
 
@@ -13,12 +13,14 @@
   "slugcats":    {"White": "白猫"},
   "creatures":   {"BlueLizard": "蓝蜥蜴"},
   "regions":     {"SU": "外缘"},
-  "passages":    {"Traveller": "旅行者"},
   "communities": {"Lizards": "蜥蜴"}
 }
 ```
 
 只有「中文名」会被覆盖；英文名与代码始终来自内置表。
+
+v1.3.2 §28 起「通行证」这一类下线（界面与评分都不再用）。老文件里的 `passages` 桶
+**不读、不改、不展示，但也不会丢**：`_write()` 会把本程序不认识的桶原样带回去。
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ import time
 
 from . import paths
 
-KINDS = ("slugcats", "creatures", "regions", "passages", "communities")
+KINDS = ("slugcats", "creatures", "regions", "communities")
 FILE_NAME = "_translations.json"
 VERSION = 1
 MAX_LEN = 32
@@ -77,6 +79,17 @@ def load() -> dict:
 def _write(data: dict) -> bool:
     data["version"] = VERSION
     data["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    # 透传「本程序已不再管理」的桶（目前是 v1.3.2 §28 下线的 `passages`）：
+    # 读入时忽略、界面上不显示，但用户当年敲过的字不该因为一次保存就消失。
+    try:
+        with open(_path(), "r", encoding="utf-8") as fh:
+            old = json.load(fh)
+        if isinstance(old, dict):
+            for key, value in old.items():
+                if key not in KINDS and key not in ("version", "updated", "ok"):
+                    data.setdefault(key, value)
+    except (OSError, ValueError):
+        pass
     try:
         os.makedirs(os.path.dirname(_path()), exist_ok=True)
         with open(_path(), "w", encoding="utf-8") as fh:

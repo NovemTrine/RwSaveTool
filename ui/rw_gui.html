@@ -332,22 +332,9 @@
   .mini-bar{display:inline-block;width:44px;height:5px;border-radius:99px;background:var(--track);overflow:hidden;vertical-align:middle;margin-left:6px}
   .mini-bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--teal),#9fe8dd)}
 
-  /* passages */
-  .pass-head{display:flex;align-items:center;gap:14px;margin-bottom:14px}
-  .pass-count{font-size:13px;color:var(--muted)}
-  .pass-count b{color:var(--accent);font-size:16px}
+  /* 进度条：概览页的「存活占比」还在用；通行证 / 收集页的其余样式已随页删除 */
   .pass-progress{flex:1;height:8px;border-radius:99px;background:var(--track);overflow:hidden}
   .pass-progress>span{display:block;height:100%;background:linear-gradient(90deg,#c98f2e,var(--accent),#f4d79a);transition:width .4s ease}
-  .pass-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
-  .pass{
-    display:flex;align-items:center;gap:10px;background:var(--surface);
-    border:1px solid var(--line);border-radius:10px;padding:9px 12px;
-  }
-  .pass .mark{width:18px;height:18px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:11px;border:1px solid var(--line2);color:var(--dim)}
-  .pass.done .mark{background:var(--accent-soft);border-color:rgba(232,176,74,.5);color:var(--accent)}
-  .pass .pn{font-size:12.5px}
-  .pass .pp{margin-left:auto;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
-  .pass.done .pn{color:var(--text)}
 
   /* communities */
   .comm{display:grid;grid-template-columns:150px minmax(0,1fr) 64px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)}
@@ -776,6 +763,14 @@
   .tag.off{color:var(--dim);border-color:var(--line)}
 
   .sortbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+  /* №2 区域搜索框：跟 sortbar 一排，放最右；窄屏自动换行 */
+  .reg-filter{flex:1 1 240px;max-width:340px;margin-left:auto;font-family:inherit;font-size:12px;
+    color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:8px;
+    padding:5px 10px;outline:none;transition:.15s}
+  .reg-filter::placeholder{color:var(--dim)}
+  .reg-filter:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--line));
+    box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 16%,transparent)}
+  .reg-filter-n{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;min-width:44px}
   .sort-btn{appearance:none;cursor:pointer;font-family:inherit;font-size:12px;color:var(--muted);
     background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:5px 10px;transition:.15s}
   .sort-btn:hover{color:var(--text);border-color:var(--line2)}
@@ -816,6 +811,10 @@
   .src-chip b{font-weight:600;font-size:11px;opacity:.92}
   .src-chip i{font-style:normal;font-size:9.5px;color:var(--amber);border-left:1px solid var(--line2);padding-left:6px}
   .src-chip.maponly{border-style:dashed}
+  /* №8 折叠：与官方层重复的模组来源——灰、虚线、末尾一个小徽标 */
+  .src-chip.dup{opacity:.5;border-style:dashed}
+  .src-chip.dup i{color:var(--dim);border-left-color:var(--line2)}
+  .layer-row.dup-row{opacity:.72}
   .src-col{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
   .src-col .src-chip{font-size:10.5px;padding:3px 8px;max-width:200px}
   .src-col .src-chip.on{box-shadow:0 0 0 1px rgba(99,210,196,.18) inset}
@@ -865,6 +864,22 @@
   .map-side .mu-hint{line-height:1.5}
   .map-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
   .map-tools .mlabel{font-size:11.5px;color:var(--dim);margin-right:2px}
+  /* №7 来源开关条：地图页最顶端。亮 = 参与计算，暗 = 熄灭（与「区域数据」同一套口径）。
+     点一下就地重算这一区，不必再开「区域数据」弹窗。 */
+  .map-src-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+    margin:0 0 8px;padding:6px 9px;border:1px solid var(--line);border-radius:10px;
+    background:color-mix(in srgb,var(--surface) 65%,transparent);transition:opacity .15s}
+  .map-src-bar .ms-label{font-size:11px;color:var(--dim);letter-spacing:.02em}
+  .map-src-bar .src-chip{padding:3px 9px;font-size:11px}
+  .map-src-bar .ms-note{margin-left:auto;font-size:11px;color:var(--dim);
+    font-variant-numeric:tabular-nums}
+  .map-src-bar .ms-note.busy{color:var(--accent)}
+  /* 真的在重排时给一条流动的细线，比把整张图变灰温和（旧图要留着，否则就是闪白） */
+  .map-src-bar .ms-note.busy::before{content:'';display:inline-block;width:42px;height:2px;
+    margin-right:7px;vertical-align:1px;border-radius:1px;
+    background:linear-gradient(90deg,transparent,currentColor,transparent);
+    background-size:200% 100%;animation:ms-run 1s linear infinite}
+  @keyframes ms-run{from{background-position:180% 0}to{background-position:-80% 0}}
   .world-btn{margin-left:8px;padding:4px 11px;font-size:11.5px;font-weight:600;
     color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));
     background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:8px}
@@ -896,8 +911,12 @@
   .geo-stage{position:relative;flex:1 1 auto;min-height:0;border:1px solid var(--line);
     border-radius:12px;overflow:hidden;background:#05070a;cursor:grab}
   .geo-stage.dragging{cursor:grabbing;user-select:none}
-  .geo-stage svg.geo-svg{display:block;width:100%;height:100%;transform-origin:0 0;
-    will-change:transform}
+  /* №7：新旧两版 SVG 交叠淡入淡出（切换来源时不闪白）。
+     绝对定位是必须的——两版同时在场时不能把舞台撑高。 */
+  .geo-stage svg.geo-svg{position:absolute;inset:0;display:block;width:100%;height:100%;
+    transform-origin:0 0;will-change:transform;transition:opacity .16s ease}
+  .geo-stage svg.geo-svg.entering{opacity:0}
+  .geo-stage svg.geo-svg.leaving{opacity:0;pointer-events:none}
   /* 2026-11-21（S3）：探索状态改用「有没有高亮框」判断——`.rm.seen .fr` 显形。
      未探索房间**不再压暗**（0.4 那档在放大后根本看不出来，主人明确不要）；
      `dim` 类仍保留，将来要压暗只需把这条换成 `opacity:var(--rg-dim,.4)`。 */
@@ -1180,6 +1199,10 @@
       <div class="meta-top">
         <div class="meta-file" id="meta-file">—</div>
         <div class="meta-actions">
+          <!-- 外链（v1.3.2 №9）：WebView2 里 target=_blank 不保证交给系统浏览器，
+               所以走桥方法 open_url（后端有域名白名单），不用 <a href>。 -->
+          <button id="open-wiki" class="btn ghost" type="button"
+                  title="在浏览器打开雨世界 Wiki（rainworld.miraheze.org）">Wiki ↗</button>
           <button id="export" class="btn" type="button">导出 JSON</button>
           <button id="export-md" class="btn ghost" type="button">导出 Markdown</button>
           <button id="reset" class="btn ghost" type="button">重新选择</button>
@@ -1542,21 +1565,6 @@ function rwParseCommunities(value){
   return out;
 }
 
-function rwParsePassages(value){
-  if (!value) return [];
-  var out = [];
-  value.split(WS_A).forEach(function(chunk){
-    var t = chunk.split(EG_A);
-    if (!t[0]) return;
-    out.push({
-      name: t[0],
-      earned: t.length > 1 && rwbool(t[1]),
-      progress: rwclean(t.slice(2))
-    });
-  });
-  return out;
-}
-
 function rwParseProgression(line){
   var p = {
     currentSlugcat:'', shelters:{}, levelTokens:[], sandboxTokens:[], classTokens:[],
@@ -1631,7 +1639,7 @@ function rwParseCampaign(line, warnings){
     deaths: null, survives: null, quits: null, deathTime: null,
     totalFood: rwint(one('TOTFOOD')), totalTime: rwint(one('TOTTIME')),
     currVerCycles: rwint(one('CURRVERCYCLES')), forcePups: rwint(one('FORCEPUPS')),
-    regions: [], communities: [], passages: [], kills: {}, ghosts: {},
+    regions: [], communities: [], kills: {}, ghosts: {},
     swallowedItems: rwParseItems(one('SWALLOWEDITEMS')),
     heldItems: rwParseItems(one('PLAYERGRASPS')),
     significantPearls: [], friends: 0
@@ -1663,7 +1671,6 @@ function rwParseCampaign(line, warnings){
   c.survives = rwint(dp['SURVIVES'] || '');
   c.quits = rwint(dp['QUITS'] || '');
   c.deathTime = rwint(dp['DEATHTIME'] || '');
-  if (dp['WINSTATE']) c.passages = rwParsePassages(dp['WINSTATE']);
 
   (dp['GHOSTS'] || '').split(',').forEach(function(pair){
     var j = pair.indexOf(':');
@@ -1950,10 +1957,6 @@ function parseSave(raw, onProgress){
     "WVWB":["断裂通道","Fractured Gateways"],
     "ZZ":["天线阵列","Aerial Arrays"]
   };
-  /* 通行证内置译名。键是存档里的原始键：注意「The Wanderer（漫游者）」在本程序里叫 Traveller
-     —— 存档里根本没有 Wanderer 这个键（实测 0 次），两边 14 条恰好只差这一对。改名前务必确认。 */
-  var PASSAGE_ZH = {Traveller:'漫游者',Survivor:'求生者',Monk:'僧侣',Hunter:'猎手',Saint:'圣徒',
-    Chieftain:'酋长',DragonSlayer:'屠龙者',Pilgrim:'朝圣者',Mother:'慈母',Friend:'朋友',Scholar:'学者',Outlaw:'暴徒',Martyr:'殉道者',Nomad:'流浪者'};
   var COMMUNITY_ZH = {All:'全部',Scavengers:'拾荒者',Lizards:'蜥蜴',Cicadas:'蝉乌贼',GarbageWorms:'垃圾虫',
     Deer:'雨鹿',JetFish:'蛙鱼',BoxWorms:'箱虫',TintedBeetles:'染色甲虫'};
 
@@ -2010,7 +2013,6 @@ function parseSave(raw, onProgress){
   var BASE_ZH = {
     slugcats: Object.assign({}, SLUGCAT_ZH),
     creatures: Object.assign({}, CREATURE_ZH),
-    passages: Object.assign({}, PASSAGE_ZH),
     communities: Object.assign({}, COMMUNITY_ZH),
     regions: (function(){
       var m = {};
@@ -2018,23 +2020,26 @@ function parseSave(raw, onProgress){
       return m;
     })()
   };
-  var TR = { slugcats:{}, creatures:{}, regions:{}, passages:{}, communities:{} };
+  var TR = { slugcats:{}, creatures:{}, regions:{}, communities:{} };
+  /* 「通行证」这一类随 №4 下线，v1.3.2 §28 连解析与乘数一起删了，这里也不再留桶。
+     老用户的 `_translations.json` 里可能还有 `passages` 那一桶：后端 `translations.load()`
+     不读它、`_write()` 原样带回去（见 `core/translations.py`），所以文件里不会丢。 */
   var TR_KINDS = [
     { key:'creatures',   label:'生物' },
     { key:'regions',     label:'区域' },
     { key:'slugcats',    label:'角色' },
-    { key:'passages',    label:'通行证' },
     { key:'communities', label:'好感' }
   ];
 
   function trCount(){
+    /* 只数还在界面上的四类（通行证那一类已随 §28 一起下线） */
     var n = 0;
-    Object.keys(TR).forEach(function(k){ n += Object.keys(TR[k] || {}).length; });
+    TR_KINDS.forEach(function(k){ n += Object.keys(TR[k.key] || {}).length; });
     return n;
   }
 
   function applyTranslations(data){
-    TR = { slugcats:{}, creatures:{}, regions:{}, passages:{}, communities:{} };
+    TR = { slugcats:{}, creatures:{}, regions:{}, communities:{} };
     if (data && typeof data === 'object'){
       Object.keys(TR).forEach(function(kind){
         var bucket = data[kind];
@@ -2049,12 +2054,10 @@ function parseSave(raw, onProgress){
     /* 先把五张表全部还原成出厂值，再叠加覆盖项 —— 否则「恢复默认」时会残留旧名字 */
     Object.keys(BASE_ZH.slugcats).forEach(function(k){ SLUGCAT_ZH[k] = BASE_ZH.slugcats[k]; });
     Object.keys(BASE_ZH.creatures).forEach(function(k){ CREATURE_ZH[k] = BASE_ZH.creatures[k]; });
-    Object.keys(BASE_ZH.passages).forEach(function(k){ PASSAGE_ZH[k] = BASE_ZH.passages[k]; });
     Object.keys(BASE_ZH.communities).forEach(function(k){ COMMUNITY_ZH[k] = BASE_ZH.communities[k]; });
     /* 覆盖进展示用的字典（这些字典是渲染时的唯一来源） */
     Object.keys(TR.slugcats).forEach(function(k){ SLUGCAT_ZH[k] = TR.slugcats[k]; });
     Object.keys(TR.creatures).forEach(function(k){ CREATURE_ZH[k] = TR.creatures[k]; });
-    Object.keys(TR.passages).forEach(function(k){ PASSAGE_ZH[k] = TR.passages[k]; });
     Object.keys(TR.communities).forEach(function(k){ COMMUNITY_ZH[k] = TR.communities[k]; });
     Object.keys(BASE_ZH.regions).forEach(function(k){
       if (!REGION_MAP[k]) REGION_MAP[k] = [BASE_ZH.regions[k], ''];
@@ -2129,6 +2132,29 @@ function parseSave(raw, onProgress){
       out.sort(function(a, b){ return a.code.localeCompare(b.code); });
       return out;
     }
+    if (kind === 'slugcats'){
+      /* 角色这份列表要覆盖三类（v1.3.2 №6）：
+         ① 内置的官方角色 —— BASE_ZH.slugcats 是出厂快照，顺序固定，保证官方 11 条永远在前；
+         ② 存档里出现过的角色 —— 模组角色（Amal / wanderer / SnowflakeCat …）只可能从这里来；
+         ③ 已经存过自定义译名的键 —— 否则换个存档这些条目就"消失"了，而文件里还在。 */
+      var seen = {};
+      function pushCat(code, base, en){
+        var key = String(code || '').trim();
+        if (!key || seen[key]) return;
+        seen[key] = 1;
+        out.push({ code: key, base: base || '', en: en || '' });
+      }
+      Object.keys(BASE_ZH.slugcats || {}).forEach(function(code){
+        pushCat(code, BASE_ZH.slugcats[code], code);
+      });
+      var mods = [];
+      ((state.result && state.result.campaigns) || []).forEach(function(c){ if (c && c.slugcat) mods.push(c.slugcat); });
+      Object.keys(TR.slugcats || {}).forEach(function(code){ mods.push(code); });
+      mods.sort(function(a, b){ return String(a).localeCompare(String(b)); });
+      /* 模组角色没有出厂中文名，副标题标一句来源，免得看成"漏翻译" */
+      mods.forEach(function(code){ pushCat(code, '', '存档内名称'); });
+      return out;
+    }
     var dict = BASE_ZH[kind] || {};
     Object.keys(dict).sort().forEach(function(code){
       out.push({ code: code, base: dict[code], en: '' });
@@ -2139,8 +2165,7 @@ function parseSave(raw, onProgress){
   /* ---------------- 批量翻译：解析 / 匹配 ----------------
      玩家的对照表按「英文名 | 中文」写，条目可能是代码也可能是显示名。
      统一归一化（BOM/全角/大小写/空格标点/前导 the）后建一张索引，就不必为每条规则写特判。
-     The Wanderer 在存档里叫 Traveller —— 这个别名必须留着，否则「漫游者」永远匹配不上。 */
-  var PASSAGE_ALIAS = { wanderer:'Traveller', traveller:'Traveller' };
+     注：原来这里有一张 `PASSAGE_ALIAS`（The Wanderer ↔ Traveller），随 §28 删通行证一起没了。 */
 
   function trNorm(s){
     return String(s == null ? '' : s)
@@ -2194,8 +2219,6 @@ function parseSave(raw, onProgress){
           var rd = (state.regions || {})[c];
           if (rd){ put(rd.displayName || '', c); put(rd.nameEn || '', c); }
         });
-      } else if (kind === 'passages'){
-        Object.keys(PASSAGE_ALIAS).forEach(function(a){ put(a, PASSAGE_ALIAS[a]); });
       }
       ctx.idx[kind] = idx;
     });
@@ -2310,7 +2333,7 @@ function parseSave(raw, onProgress){
       '<div class="sortbar" style="margin-top:10px">' +
         '<button class="btn ghost" type="button" id="tr-bulk-file">从文件读取…</button>' +
         '<button class="btn ghost" type="button" id="tr-bulk-clear">清空</button>' +
-        '<label class="tr-flag" title="打开后会在生物/区域/角色/通行证/好感五类里依次查找，适合一张表混写多种条目">' +
+        '<label class="tr-flag" title="打开后会在生物/区域/角色/好感四类里依次查找，适合一张表混写多种条目">' +
           '<input type="checkbox" id="tr-bulk-cross"' + (state.trCross ? ' checked' : '') + '> 跨分类自动匹配</label>' +
         '<span style="margin-left:auto;color:var(--dim)" id="tr-bulk-note"></span>' +
       '</div>' +
@@ -2553,16 +2576,16 @@ function parseSave(raw, onProgress){
 
   var FIELD_DOCS = {
     seed:'世界随机种子，决定地图与生物分布的生成结果。',
-    cycle:'已度过的周期数（天数）；每次成功冬眠 +1。',
-    food:'当前饱食度（食物 pip 数），冬眠需要填满。',
-    den:'当前冬眠点（庇护所）所在房间代码，格式为「区域缩写_房间号」，如 RF_S04。',
-    denRegion:'冬眠点缩写匹配出的区域：内置译名用中文 + English，模组/变体区域用数据里的原名 + 缩写。',
-    lastDen:'上一个冬眠点房间代码。',
+    cycle:'已度过的周期数（天数）；每次成功雨眠 +1。',
+    food:'当前饱食度（食物 pip 数），雨眠需要填满。',
+    den:'当前雨眠点（庇护所）所在房间代码，格式为「区域缩写_房间号」，如 RF_S04。',
+    denRegion:'雨眠点缩写匹配出的区域：内置译名用中文 + English，模组/变体区域用数据里的原名 + 缩写。',
+    lastDen:'上一个雨眠点房间代码。',
     karma:'业力值 / 上限。存档里是 0 基（KARMA 0~9），界面按游戏内习惯 +1 显示为 1~10；穿过区域大门通常需要足够业力。',
     glow:'神经元发光（HASTHEGLOW）：与神经元相关的能力标志。',
     mark:'交流印记（HASTHEMARK）：是否获得五块卵石的交流印记。',
     deaths:'该战役累计死亡次数。',
-    survives:'该战役累计成功冬眠次数。',
+    survives:'该战役累计成功雨眠次数。',
     quits:'中途退出（未结束周期）的次数。',
     totalFood:'累计吃下的食物总量。',
     totalTime:'玩家在该存档的真实游玩总时长 = 存活时长 TOTTIME + 死亡相关时长 DEATHTIME。这个总时长不单独存在存档里，需要两者相加（与游戏内速通计时器同口径）。',
@@ -2571,7 +2594,10 @@ function parseSave(raw, onProgress){
     alivePct:'真存活时长（TOTTIME）占总时长的百分比；总时长 = TOTTIME + DEATHTIME。',
     kills:'按生物种类统计的击杀数（同种的体型/实例变体已合并，蝉乌贼按白/黑细分）。',
     friends:'跟随的蛞蝓猫幼崽数量。',
-    passage:'通行证挑战的完成状态与进度。',
+    passage:'通行证挑战的完成状态与进度。v1.3.2 起界面与评分均不再使用（分数里的通行证乘数已取消），仅作原始字段留档。',
+    lore:'剧情珍珠（LORE）：存档里已解锁的剧情珍珠 ID 列表。它记的是「解锁了哪些剧情」，与地图上珍珠的总数不是同一层。',
+    broadcast:'广播（BROADCASTS）：已解锁的广播日志（Chatlog_*）条目；存档里还混着少量非广播 ID，展示前要过滤。',
+    echo:'回响（GHOSTS）：存档按区域记「触发过几次」，只到区域级，不记具体是哪一处回响。',
     region:'区域世界状态：最后更新周期、探索房间数、物品与生物数量。',
     community:'各生物对你的好感度，范围 -1 ~ 1。',
     pearl:'已交付 / 重要的数据珍珠清单。',
@@ -2583,11 +2609,11 @@ function parseSave(raw, onProgress){
   var FIELD_GROUPS = [
     {title:'玩家进度', fields:[
       ['SEED','世界随机种子'],['CYCLENUM','周期数（天数）'],['FOOD','当前饱食度'],
-      ['DENPOS','当前冬眠点房间'],['denRegion','冬眠点所属区域（中文 / English，按对照表匹配）'],['LASTVDENPOS','上一个冬眠点'],['KARMA','业力 / 上限'],
+      ['DENPOS','当前雨眠点房间'],['denRegion','雨眠点所属区域（中文 / English，按对照表匹配）'],['LASTVDENPOS','上一个雨眠点'],['KARMA','业力 / 上限'],
       ['HASTHEGLOW','神经元发光（是否具备）'],['HASTHEMARK','交流印记（是否获得）']
     ]},
     {title:'统计', fields:[
-      ['DEATHS','死亡次数'],['SURVIVES','成功冬眠次数'],['QUITS','中途退出次数'],
+      ['DEATHS','死亡次数'],['SURVIVES','成功雨眠次数'],['QUITS','中途退出次数'],
       ['TOTFOOD','累计食物'],['TOTTIME','存活时长（成功存活的循环累计，秒）'],
       ['DEATHTIME','死亡相关时长（以死亡告终的循环累计，秒）'],
       ['总时长','TOTTIME + DEATHTIME，即速通计时器口径'],['KILLS','按种类的击杀统计'],
@@ -2644,10 +2670,12 @@ function parseSave(raw, onProgress){
   state.regmapColors = {};     /* 几何图配色：{区域:{air/solid/…: '#hex'}}，只存改过的项 */
   state.regmapCurve = null;    /* 连线参数（S4）：null = 用 CURVE_DEF；全局一套，不分区域 */
   state.regmapEngine = '';     /* 排布引擎（W2）：'' = 跟随后端默认，'legacy' / 'zq' 手动 */
-  state.regmapAnno = null;     /* 标注开关（W4）：null = 用 ANNO_DEF；{sub,kind,marks,gates,labels} */
+  state.regmapAnno = null;     /* 标注开关（W4）：null = 用 ANNO_DEF；{sub,labels} */
   state.regmapBgOverride = {};  /* 背景取色（V1.24 №4）：{区域:{子区域名:'#hex'}}，'' 键是主体 */
   state.roomExcluded = {};     /* 手动"此角色到不了"：{角色:{区域:[房间]}}，直接剔除出分母 */
   state.roomStrict = true;     /* 完成度口径：true=只算当前角色可达的房间 */
+  state.hideDupSources = true; /* №8：隐藏「与官方层重复」的模组来源（默认开） */
+  state.regionFilter = '';     /* №2：区域数据的搜索词（只在本次会话里保留） */
   /* 房间卡是否全屏：默认全屏（P4 起）。右栏清单只在全屏时可见，默认紧凑会让
      「出口跳转 / 悬停高亮」没有入口；config.ui.roomCardFull 有值时以配置为准。 */
   state.roomCardFull = true;
@@ -2720,9 +2748,18 @@ function parseSave(raw, onProgress){
     return s ? !!s.enabled : true;
   }
 
-  /* 点亮 / 熄灭一个来源：同时改注册表（持久化）与内存里的每一层 */
+  /* №8 折叠：这层重复的是哪个官方层（查不到就退回 id，不编名字） */
+  function dupLabel(id){
+    var s = sourceById(id);
+    return s ? (s.name || id) : (id || '');
+  }
+
+  /* 点亮 / 熄灭一个来源：同时改注册表（持久化）与内存里的每一层。
+     返回一个 Promise：`set_source_enabled` 落盘之后才 resolve。
+     为什么要等——区域地图重算时后端是自己读配置算筛选的（`bridge._regmap_filters`），
+     不 await 就会出现"图还是旧口径"的竞态。不关心顺序的调用点忽略返回值即可。 */
   function toggleSource(id, force){
-    if (!id) return;
+    if (!id) return Promise.resolve();
     var next = (force === undefined) ? !sourceOn(id) : !!force;
     var s = sourceById(id);
     if (s) s.enabled = next;
@@ -2757,10 +2794,12 @@ function parseSave(raw, onProgress){
       if (sum){ sum.activeRooms = rd.activeRooms; sum.activeSources = list; }
     });
 
+    recompute();          /* 区域表 / 概览里的完成度跟着变（地图页自己另外重算） */
+
     if (hasBridge()){
-      bridgeCall('set_source_enabled', id, next).catch(function(){});
+      return bridgeCall('set_source_enabled', id, next).catch(function(){});
     }
-    recompute();
+    return Promise.resolve();
   }
 
   function recompute(){
@@ -3184,9 +3223,11 @@ function parseSave(raw, onProgress){
     return list;
   }
 
-  /* 剧情模式分数（估算）：
+  /* 剧情模式分数（估算；v1.3.2 §28 起**没有通行证乘数**）：
        基础分 = 食物 + 雨眠×10 − 死亡×3 − 退出×3 − 存活分钟 + Σ(击杀×分值)
-       最终分 = 基础分 × (通行证已获 + 1)，圣徒再 ×1.35
+       最终分 = 基础分（圣徒额外 ×1.35）
+     2026-11-27：主人要求「分数部分把通行证的影响去掉」。删掉「×(通行证数+1)」之后，
+     每一项都能在界面上找到出处，也都能被用户自己复算——这是这次改动的意义所在。
      剧情加成（神经元 / 珍珠 / 飞升 / 遇见迭代器）存档无字段，全部不含。 */
   function calcScore(c){
     if (!c) return null;
@@ -3207,13 +3248,11 @@ function parseSave(raw, onProgress){
     var alive = c.totalTime == null ? 0 : c.totalTime;
     var minutes = Math.floor(alive / 60);
     var base = food + survives * 10 - deaths * 3 - quits * 3 - minutes + killScore;
-    var passages = (c.passages || []).filter(function(p){ return p.earned; }).length;
-    var multiplier = passages + 1;
     var saint = /^saint$/i.test(String(c.slugcat || '')) ? 1.35 : 1;
     return {
       food: food, survives: survives, deaths: deaths, quits: quits, minutes: minutes,
-      killScore: killScore, base: base, passages: passages, multiplier: multiplier,
-      saint: saint, total: Math.round(base * multiplier * saint),
+      killScore: killScore, base: base,
+      saint: saint, total: Math.round(base * saint),
       unknownKinds: unknownKinds, unknownCount: unknownCount, unknownNames: unknownNames
     };
   }
@@ -3272,14 +3311,13 @@ function parseSave(raw, onProgress){
     if (rd && rd.displayName) return rd.displayName + ' ' + c;
     return c || '—';
   }
-  /* 冬眠点形如 RF_S04 / LC_shelter_above：取第一个下划线前的片段作为区域缩写 */
+  /* 雨眠点形如 RF_S04 / LC_shelter_above：取第一个下划线前的片段作为区域缩写 */
   function denAbbr(denPos){
     var d = String(denPos == null ? '' : denPos);
     if (!d) return '';
     var i = d.indexOf('_');
     return (i > 0 ? d.slice(0, i) : d).toUpperCase();
   }
-  function passageZh(s){ return PASSAGE_ZH[s] || s; }
   function commZh(s){ return COMMUNITY_ZH[s] || s; }
 
   var tipEl = $('tip');
@@ -3546,7 +3584,7 @@ function parseSave(raw, onProgress){
   });
 
   /* ---------------- 区域名补全 ---------------- */
-  /* 给每个角色补上「当前冬眠点所属区域」，并给每个区域补中英文名。
+  /* 给每个角色补上「当前雨眠点所属区域」，并给每个区域补中英文名。
      缩写在对照表里的 → 写入中文 / 英文；不在表里的 → 用区域数据里的原名（DisplayName），
      连数据都没有才退回原始缩写。 */
   function decorateRegions(res){
@@ -3627,9 +3665,8 @@ function parseSave(raw, onProgress){
     var current = state.result.progression.currentSlugcat;
     list.innerHTML = state.result.campaigns.map(function(c){
       var zh = slugZh(c.slugcat);
-      var earned = c.passages.filter(function(p){ return p.earned; }).length;
-      var total = c.passages.length;
-      var pct = total ? Math.round(earned / total * 100) : 0;
+      /* 侧栏原来这条细进度条画的是「通行证完成度」，随 №4 下线一起移除。
+         №4 之后还留着解析（评分乘数要用），§28 又把乘数删了，所以 WINSTATE 现在完全不解析。 */
       var active = c.slugcat === state.selected ? ' active' : '';
       var isCur = c.slugcat === current ? '<span class="camp-current">当前</span>' : '';
       return '<button class="camp' + active + '" type="button" data-slug="' + esc(c.slugcat) + '">' +
@@ -3638,14 +3675,13 @@ function parseSave(raw, onProgress){
         '<div class="camp-meta"><span>周期 ' + esc(c.cycle == null ? '—' : c.cycle) + '</span>' +
         '<span>业力 ' + esc((c.karma == null ? '—' : c.karma) + '/' + (c.karmaCap == null ? '—' : c.karmaCap)) + '</span></div>' +
         '<div class="camp-region' + (c.denRegionMatched || (c.denRegionZh && c.denRegionZh !== '未识别') ? '' : ' unrec') + '" data-tip="' +
-          esc('冬眠点 ' + (c.denPos || '—') + ' → ' + ((c.denRegionZh && c.denRegionZh !== '未识别')
+          esc('雨眠点 ' + (c.denPos || '—') + ' → ' + ((c.denRegionZh && c.denRegionZh !== '未识别')
             ? (c.denRegionZh + ' ' + (c.denRegionEn || c.denRegionAbbr || ''))
             : ('缩写 ' + (c.denRegionAbbr || '—') + '（既没有译名、也没导入这个区域的数据）'))) + '">' +
           ((c.denRegionZh && c.denRegionZh !== '未识别')
             ? esc(c.denRegionZh) + '<em>' + esc(c.denRegionEn || c.denRegionAbbr || '') + '</em>'
             : '未识别<em>' + esc(c.denRegionAbbr || '—') + '</em>') +
         '</div>' +
-        '<div class="camp-bar"><span style="width:' + pct + '%"></span></div>' +
         '</button>';
     }).join('');
 
@@ -3664,31 +3700,40 @@ function parseSave(raw, onProgress){
     return state.result.campaigns.filter(function(c){ return c.slugcat === state.selected; })[0] || null;
   }
 
+  /* 标签页：概览 / 区域 / 统计 / 其他。
+     - 「通行证」整块下线（№4），§28 起解析与分数乘数也一并删除；
+     - 「收集」页已整页下线，只留「各战役统计」一张表，标签改名「统计」；
+     - 「字段说明」下线，但 FIELD_DOCS 留着 —— 概览页的 ? 提示全靠它。 */
   var TABS = [
     ['overview','概览'],
-    ['passages','通行证'],
     ['regions','区域'],
-    ['communities','好感度'],
-    ['kills','击杀统计'],
-    ['global','全局解锁'],
-    ['docs','字段说明']
+    ['stats','统计'],
+    ['other','其他']
   ];
+
+  /* 旧标签名 → 新标签名。config 里可能存过已下线的 tab（passages / global / docs），
+     不做映射的话 switch 落空 → 详情区整片空白，看起来像"存档坏了"。 */
+  var TAB_ALIAS = { collect:'stats', passages:'stats', global:'stats', docs:'overview' };
 
   function renderDetail(){
     var c = currentCampaign();
     if (!c) return;
 
+    /* 旧 tab 名先归一（见 TAB_ALIAS）：passages / global / docs 都已下线，
+       不归一的话高亮找不到按钮、详情区也会落空。 */
+    if (TAB_ALIAS[state.tab]) state.tab = TAB_ALIAS[state.tab];
+
     var zh = slugZh(c.slugcat);
     $('detail-head').innerHTML =
       '<div class="detail-title"><h2>' + esc(c.slugcat) + '</h2>' +
       (zh ? '<span class="zh">' + esc(zh) + '</span>' : '') + '</div>' +
-      '<div class="detail-sub">种子 ' + esc(c.seed || '—') + ' · 冬眠点 ' + esc(c.denPos || '—') +
+      '<div class="detail-sub">种子 ' + esc(c.seed || '—') + ' · 雨眠点 ' + esc(c.denPos || '—') +
       ' <span class="sub-region' + (c.denRegionMatched || (c.denRegionZh && c.denRegionZh !== '未识别') ? '' : ' unrec') + '">（' +
         ((c.denRegionZh && c.denRegionZh !== '未识别')
           ? esc(c.denRegionZh) + (c.denRegionEn ? ' / ' + esc(c.denRegionEn) : '') + ' ' + esc(c.denRegionAbbr || '')
           : '未识别区域 ' + esc(c.denRegionAbbr || '—')) +
       '）</span>' +
-      ' · 区域 ' + c.regions.length + ' · 通行证 ' + c.passages.filter(function(p){return p.earned;}).length + '/' + c.passages.length + '</div>' +
+      ' · 区域 ' + c.regions.length + '</div>' +
       '<div class="hero-stats">' +
         heroStat('周期', c.cycle, '', 'cycle') +
         heroStat('食物', c.food, '', 'food') +
@@ -3710,12 +3755,11 @@ function parseSave(raw, onProgress){
     var html = '';
     switch(state.tab){
       case 'overview': html = overviewHTML(c); break;
-      case 'passages': html = passagesHTML(c); break;
       case 'regions': html = regionsHTML(c); break;
-      case 'communities': html = communitiesHTML(c); break;
-      case 'kills': html = killsHTML(c); break;
-      case 'global': html = globalHTML(state.result.progression); break;
-      case 'docs': html = docsHTML(); break;
+      /* 「统计」= 各战役统计一张表（原「收集」页的收集品内容已整块下线） */
+      case 'stats': html = campaignsStatsHTML(); break;
+      /* 「其他」= 击杀统计 → 好感度，两段连续排（不另做二级 tab，两段都不长） */
+      case 'other': html = killsHTML(c) + communitiesHTML(c); break;
     }
     $('detail-body').innerHTML = html;
     /* 击杀页：明细表开关 + Top N 滑块 + 扇区 hover */
@@ -3834,10 +3878,10 @@ function parseSave(raw, onProgress){
       stat('种子 SEED', c.seed || '—', 'seed') +
       stat('周期 CYCLENUM', c.cycle, 'cycle', ' 天') +
       stat('食物 FOOD', c.food, 'food') +
-      stat('冬眠点 DENPOS', c.denPos || '—', 'den') +
+      stat('雨眠点 DENPOS', c.denPos || '—', 'den') +
       statRegion('所在区域', c.denRegionZh, c.denRegionMatched ? c.denRegionEn : '', 'denRegion',
         c.denRegionMatched ? '' : ('缩写 ' + (c.denRegionAbbr || '—')), !c.denRegionMatched) +
-      stat('上一冬眠点', c.lastDenPos || '—', 'lastDen') +
+      stat('上一雨眠点', c.lastDenPos || '—', 'lastDen') +
       stat('业力 KARMA', (c.karma == null ? '—' : c.karma) + ' / ' + (c.karmaCap == null ? '—' : c.karmaCap), 'karma', c.reinforced ? ' 强化' : '') +
       stat('神经元发光 HASTHEGLOW', c.hasGlow ? '是' : '否', 'glow') +
       stat('交流印记 HASTHEMARK', c.hasMark ? '是' : '否', 'mark') +
@@ -3865,53 +3909,6 @@ function parseSave(raw, onProgress){
         '<div style="margin-top:7px;color:var(--muted);font-size:12px">存活 ' + fmtHMS(lt.alive) + ' ／ 总计 ' + fmtHMS(lt.total) +
         '　·　其中死亡相关 ' + fmtHMS(lt.dead) + '</div>'));
 
-    // 进度概览条
-    var earned = c.passages.filter(function(p){ return p.earned; }).length;
-    var total = c.passages.length;
-    var pct = total ? Math.round(earned / total * 100) : 0;
-    h += section('收集进度', 
-      '<div class="stat-grid">' +
-        stat('通行证', earned + ' / ' + total, 'passage', ' 完成') +
-        stat('区域', c.regions.length, 'region', ' 个') +
-        stat('击杀总数', sumKills(c.kills), 'kills', ' 次') +
-      '</div>' +
-      '<div style="margin-top:12px" class="pass-progress"><span style="width:' + pct + '%"></span></div>' +
-      '<div style="margin-top:7px;color:var(--muted);font-size:12px">通行证完成度 ' + pct + '%</div>');
-
-    // 收集品：重要珍珠（从原「物品」页挪过来，0 枚时不占位）
-    if (c.significantPearls.length){
-      h += section('收集品',
-        '<div class="stat-grid">' +
-          stat('重要珍珠', c.significantPearls.length, 'pearl', ' 枚') +
-        '</div>' +
-        '<div class="chips" style="margin-top:12px">' +
-          c.significantPearls.map(function(p){ return '<span class="chip">' + esc(p) + '</span>'; }).join('') +
-        '</div>' +
-        '<div class="format-note" style="margin-top:10px">已交付 / 已记录的重要珍珠所在房间；普通珍珠不计入。</div>');
-    }
-
-    return h;
-  }
-
-  function passagesHTML(c){
-    var earned = c.passages.filter(function(p){ return p.earned; }).length;
-    var total = c.passages.length;
-    var pct = total ? Math.round(earned / total * 100) : 0;
-    var h = '<div class="pass-head">' +
-      '<div class="pass-count"><b>' + earned + '</b> / ' + total + ' 已完成</div>' +
-      '<div class="pass-progress"><span style="width:' + pct + '%"></span></div>' +
-      '<div class="pass-count">' + pct + '%</div></div>';
-    if (!total) return h + '<div class="empty">该角色没有通行证数据。</div>';
-    h += '<div class="pass-list">' + c.passages.map(function(p){
-      var prog = p.progress && p.progress.length ? p.progress[0] : '';
-      if (prog.length > 18) prog = prog.slice(0, 18) + '…';
-      var zh = PASSAGE_ZH[p.name] || '';
-      return '<div class="pass' + (p.earned ? ' done' : '') + '">' +
-        '<span class="mark">' + (p.earned ? '✓' : '·') + '</span>' +
-        '<span class="pn">' + esc(zh || p.name) + (zh ? '<span style="color:var(--dim);font-size:10.5px;margin-left:5px">' + esc(p.name) + '</span>' : '') + '</span>' +
-        '<span class="pp">' + (prog ? '进度 ' + esc(prog) : '') + '</span>' +
-        '</div>';
-    }).join('') + '</div>';
     return h;
   }
 
@@ -3924,17 +3921,23 @@ function parseSave(raw, onProgress){
     var rows = rd.layers.map(function(L){
       var on = !!L.enabled;
       var name = L.sourceName || L.label || L.id;
-      var cls = 'src-chip' + (on ? ' on' : '') + ' k-' + (L.sourceKind || 'mod') + (L.mapOnly ? ' maponly' : '');
+      var dup = !!L.dupOf;
+      /* №8：默认把「与官方层重复」的那层收起来；关掉开关才显示（灰 + 重复徽标） */
+      if (dup && state.hideDupSources) return '';
+      var cls = 'src-chip' + (on ? ' on' : '') + ' k-' + (L.sourceKind || 'mod') +
+                (L.mapOnly ? ' maponly' : '') + (dup ? ' dup' : '');
       var tip = name + ' · ' + (L.roomCount || 0) + ' 间';
       tip += L.mapOnly
         ? ' · 仅地图：没有 world 文件，不参与分母'
         : (on ? ' · 参与计算' : ' · 已熄灭，不参与计算');
+      if (dup) tip += ' · 与「' + dupLabel(L.dupOf) + '」内容重复，已默认折叠';
       if (L.upToDate === false) tip += ' · 源文件已变化，建议重新导入';
       tip += '（点击' + (on ? '熄灭' : '点亮') + '）';
       return '<button class="' + cls + '" type="button" data-src="' + esc(L.sourceId || L.id) + '" data-tip="' + esc(tip) + '">' +
         '<span class="sc-n">' + esc(name) + '</span>' +
         '<b>' + (L.roomCount || 0) + '</b>' +
         (L.mapOnly ? '<i>仅地图</i>' : '') +
+        (dup ? '<i>重复</i>' : '') +
         '</button>';
     }).join('');
     return '<div class="src-col">' + rows + '</div>';
@@ -4549,55 +4552,6 @@ function parseSave(raw, onProgress){
     });
   }
 
-  function globalHTML(p){
-    var h = '';
-    var shelterRegions = Object.keys(p.shelters || {}).sort(function(a,b){
-      return (p.shelters[b].length || 0) - (p.shelters[a].length || 0);
-    });
-    var totalRooms = shelterRegions.reduce(function(n, r){ return n + p.shelters[r].length; }, 0);
-    h += '<div class="section"><div class="stat-grid">' +
-      stat('当前角色', p.currentSlugcat || '—') +
-      stat('庇护所区域', shelterRegions.length, 'shelters', ' 个') +
-      stat('庇护所房间', totalRooms, 'shelters', ' 间') +
-      stat('关卡 token', (p.levelTokens || []).length, 'tokens') +
-      stat('沙盒 token', (p.sandboxTokens || []).length, 'tokens') +
-      stat('已玩竞技场', (p.playedArenas || []).length, 'tokens') +
-      '</div></div>';
-
-    if (shelterRegions.length){
-      h += '<div class="section"><div class="section-title"><span>已发现庇护所</span><span class="line"></span></div><div class="chips">' +
-        shelterRegions.map(function(r){
-          var code = String(r).toUpperCase();
-          var info = regionInfo(code);
-          var zh = regionZh(code), en = regionEn(code);
-          /* 只有「既没有内置译名、也没有导入数据」时才标琥珀色：那种情况只能显示代码本身 */
-          var unknown = !info && !zh && !en;
-          var tip = unknown
-            ? ('缩写 ' + code + '：没有内置译名，也没导入这个区域的数据')
-            : (code + (info ? ' · 内置译名' : zh && zh !== en ? ' · 自定义译名' : ' · 区域原名'));
-          return '<span class="chip' + (unknown ? ' unrec' : '') + '" data-code="' + esc(code) +
-            '" data-tip="' + esc(tip) + '">' +
-            esc(regionLabel(code)) + ' <b>' + p.shelters[r].length + '</b></span>';
-        }).join('') + '</div>' +
-        '</div>';
-    }
-
-    var extra = [];
-    if (p.classTokens && p.classTokens.length) extra.push(['特殊解锁标记', p.classTokens.join(', ')]);
-    if (p.safariTokens && p.safariTokens.length) extra.push(['远征区域', p.safariTokens.length + ' 个']);
-    if (p.lore && p.lore.length) extra.push(['剧情 LORE', p.lore.length + ' 条']);
-    if (p.broadcasts && p.broadcasts.length) extra.push(['广播', p.broadcasts.length + ' 条']);
-    if (extra.length){
-      h += '<div class="section"><div class="section-title"><span>其他解锁</span><span class="line"></span></div>' +
-        '<div class="doc-list">' + extra.map(function(e){
-          return '<div class="doc-item"><span class="dk">' + esc(e[0]) + '</span><span class="dv">' + esc(e[1]) + '</span></div>';
-        }).join('') + '</div></div>';
-    }
-
-    h += campaignsStatsHTML();
-    return h;
-  }
-
   /* ---------------- 各战役统计 ----------------
      数据源：战役块里的 TOTTIME / DEATHTIME（CAMPAIGNTIME 只做交叉校验）。 */
   function campaignsStatsHTML(){
@@ -4647,7 +4601,7 @@ function parseSave(raw, onProgress){
             (pct == null ? 0 : Math.max(1, Math.min(100, pct))).toFixed(1) + '%"></span></div>' +
           '<span class="num" style="min-width:46px;text-align:right">' + (pct == null ? '—' : pct.toFixed(1) + '%') + '</span>' +
         '</div></td>' +
-        '<td class="num" data-tip="基础分 ' + fmtNum(sc.base) + ' × 通行证 ' + sc.multiplier +
+        '<td class="num" data-tip="基础分 ' + fmtNum(sc.base) +
           (sc.saint > 1 ? ' × 圣徒 ' + sc.saint : '') + '（估算，不含剧情加成）">≈ ' + fmtNum(sc.total) + '</td>' +
         '</tr>';
     }).join('');
@@ -4674,10 +4628,15 @@ function parseSave(raw, onProgress){
         '总游玩时间 = <code>TOTTIME</code> + <code>DEATHTIME</code>（与游戏内速通计时器同口径），' +
         '不使用 <code>CAMPAIGNTIME</code> 的全局计时——它只累计存活时间，不含死亡耗时。' +
         '末行「全部 N 个战役」是本存档所有角色的合计，跨战役相加会包含不同角色重复游玩的部分。' +
-        '分数按官方剧情规则估算，已乘（通行证数 + 1），圣徒额外 ×1.35，<b>不含</b>神经元 / 珍珠 / 飞升等剧情加成。' +
+        '分数按官方剧情规则估算：食物 + 雨眠×10 − 死亡×3 − 退出×3 − 存活分钟 + Σ 击杀分值；' +
+        '圣徒额外 ×1.35。<b>不含</b>神经元 / 珍珠 / 飞升等剧情加成（通行证乘数已取消）。' +
       '</div></div>';
   }
 
+  /* 「字段说明」页已下线（v1.3.2 №3）：TABS 里没有它了，**当前没有任何入口调用这个函数**。
+     保留而不删的理由：它和 FIELD_DOCS 是同一份字段清单的另一种呈现（表格版），
+     以后想恢复成「设置 → 原始字段」面板可以直接用；删了就得重写一遍。
+     注意：里面还写着「已发现庇护所」「通行证 / 解锁」两段，那是下线前的内容，别当成现行口径。 */
   function docsHTML(){
     var h = '<div class="format-note" style="margin-bottom:20px">' +
       '存档是 .NET Hashtable 的 XML 信封，<code>save</code> 段 = <b>32 位 MD5 校验和</b> + HTML 转义后的明文序列化串。' +
@@ -4686,7 +4645,7 @@ function parseSave(raw, onProgress){
       '布尔标志通常“只有为真才写入裸字段名”。' +
       '</div>';
     h += '<div class="format-note" style="margin-bottom:20px">' +
-      '区域名优先用《地图缩写对照表》（100 条，逐行转录自 5 张截图），冬眠点 <code>DENPOS</code> 取第一个下划线前的缩写，' +
+      '区域名优先用《地图缩写对照表》（100 条，逐行转录自 5 张截图），雨眠点 <code>DENPOS</code> 取第一个下划线前的缩写，' +
       '如 <code>RF_S04</code> → <code>RF</code> → <b>珊瑚洞穴 Coral Caves</b>。' +
       '表里没有的缩写（模组 / 变体区域）显示<b>区域数据里的原名 + 缩写</b>，例如 <b>Conduit Reliquary Z1</b>；' +
       '既没译名也没导入数据的，才只剩原始代码。想给它们起中文名，去顶栏「译名 → 区域」里搜代码即可。' +
@@ -4778,10 +4737,10 @@ function parseSave(raw, onProgress){
         mdCell(c.survives == null ? '—' : c.survives) + ' |');
       L.push('| 业力 | ' + mdCell(c.karma == null ? '—' : c.karma) +
         (c.karmaCap == null ? '' : ' / ' + c.karmaCap) + ' |');
-      L.push('| 通行证 | ' + c.passages.filter(function(p){ return p.earned; }).length + ' / ' + c.passages.length + ' |');
+      /* 通行证那一行与乘数都已下线（v1.3.2 №4 / §28）：分数 = 基础分（圣徒再 ×1.35）。 */
       var msc = calcScore(c);
-      L.push('| 估算分数 | ≈ ' + fmtNum(msc.total) + '（基础分 ' + fmtNum(msc.base) + ' × ' +
-        msc.multiplier + (msc.saint > 1 ? ' × 圣徒 1.35' : '') + '） |');
+      L.push('| 估算分数 | ≈ ' + fmtNum(msc.total) + '（基础分 ' + fmtNum(msc.base) +
+        (msc.saint > 1 ? ' × 圣徒 1.35' : '') + '） |');
       L.push('');
 
       var rows = c.regions.slice().sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); });
@@ -4850,7 +4809,7 @@ function parseSave(raw, onProgress){
     L.push('');
     L.push('> 说明：总时长 = 存活时长 TOTTIME + 死亡相关时长 DEATHTIME（与游戏内速通计时器同口径）。');
     L.push('> 业力按游戏内显示口径（存档为 0 基，界面 +1 并夹在 1~10）。');
-    L.push('> 分数 = 食物×1 + 雨眠×10 − 死亡×3 − 退出×3 − 存活分钟 + Σ(击杀×剧情分值)，再 ×(通行证数+1)，圣徒 ×1.35；');
+    L.push('> 分数 = 食物×1 + 雨眠×10 − 死亡×3 − 退出×3 − 存活分钟 + Σ(击杀×剧情分值)，圣徒 ×1.35；');
     L.push('> 不含神经元 / 珍珠 / 飞升 / 遇见迭代器等剧情加成，属**估算值**；未收录物种按 0 分。');
     L.push('> 分母 = 点亮来源的房间并集；「仅地图」来源不参与分母；角色有专属地图版本时按该版本清单计算；');
     L.push('> 只对特定角色存在（EXCLUSIVEROOM）或对该角色隐藏（HIDEROOM）的房间已从分母剔除；');
@@ -4868,6 +4827,20 @@ function parseSave(raw, onProgress){
 
   $('export').addEventListener('click', exportJSON);
   $('export-md').addEventListener('click', exportMarkdown);
+
+  /* 雨世界 Wiki（v1.3.2 №9）。地址**写死在前端**、后端只做域名白名单校验：
+     两端都不读 config，避免以后有人把可配置 URL 当成"功能"。 */
+  var WIKI_URL = 'https://rainworld.miraheze.org/wiki/Rain_World_Wiki';
+  $('open-wiki').addEventListener('click', function(){
+    if (hasBridge()){
+      bridgeCall('open_url', WIKI_URL).then(function(res){
+        if (!res || !res.ok) toast('打不开浏览器：' + ((res && res.error) || '未知原因'));
+      }).catch(function(e){ toast('打不开浏览器：' + ((e && e.message) || e)); });
+    } else if (window.open){
+      /* 浏览器预览模式（无桥）：直接开新标签 */
+      window.open(WIKI_URL, '_blank', 'noopener');
+    }
+  });
 
   /* ---------------- 房间卡配色 ----------------
      默认值与几何图（`RG_ITEMS`）**同一套**：岩壁 #000000、背景结构 #637178、管道 #FFFFFF；
@@ -5130,11 +5103,17 @@ function parseSave(raw, onProgress){
       } else {
         sub.push('完整清单');
       }
+      /* №8：默认收起重复层（和主界面的 chips 用同一个开关），关掉才显示，便于排查 */
+      if (L.dupOf && state.hideDupSources) return '';
       if (L.upToDate === false) sub.push('源文件已变化');
-      return '<div class="layer-row">' +
-        '<button class="src-chip' + (L.enabled ? ' on' : '') + ' k-' + esc(L.sourceKind || 'mod') + (L.mapOnly ? ' maponly' : '') + '" type="button" ' +
-          'data-src="' + esc(L.sourceId || L.id) + '" data-tip="' + esc((L.sourceName || L.label || '') + '：点击切换是否参与计算') + '">' +
-          '<span class="sc-n">' + esc(L.sourceName || L.label || L.id) + '</span><b>' + (L.rooms || 0) + '</b></button>' +
+      if (L.dupOf) sub.push('与「' + dupLabel(L.dupOf) + '」重复·已折叠');
+      return '<div class="layer-row' + (L.dupOf ? ' dup-row' : '') + '">' +
+        '<button class="src-chip' + (L.enabled ? ' on' : '') + ' k-' + esc(L.sourceKind || 'mod') +
+          (L.mapOnly ? ' maponly' : '') + (L.dupOf ? ' dup' : '') + '" type="button" ' +
+          'data-src="' + esc(L.sourceId || L.id) + '" data-tip="' + esc((L.sourceName || L.label || '') +
+            (L.dupOf ? '：与「' + dupLabel(L.dupOf) + '」内容重复，已默认折叠' : '：点击切换是否参与计算')) + '">' +
+          '<span class="sc-n">' + esc(L.sourceName || L.label || L.id) + '</span><b>' + (L.rooms || 0) + '</b>' +
+          (L.dupOf ? '<i>重复</i>' : '') + '</button>' +
         /* 地图按钮不再看 hasMap：几何图只需要房间数据，跟 map_image 有没有无关 */
         ((L.rooms || 0) ? '<button class="sort-btn lr-btn" type="button" data-map="' + esc(r.code) + '" data-layer="' + esc(L.id) + '">地图</button>' : '') +
         '<span class="lr-meta">' + esc(sub.join(' · ')) + '</span>' +
@@ -5161,26 +5140,100 @@ function parseSave(raw, onProgress){
       '</div></div>';
   }
 
+  /* №2 搜索：缩写 / 英文名 / 中文名 都能搜。
+     归一化只做「小写 + 去空白与连字符」——区域缩写本身就是 `GWold` / `DSL` 这种
+     驼峰，硬拆词反而会把 `SI` 搜成一片。 */
+  function regionQuery(){
+    return String(state.regionFilter || '').trim().toLowerCase().replace(/[\s_\-]/g, '');
+  }
+  function regionMatches(item){
+    var q = regionQuery();
+    if (!q) return true;
+    var code = String(item.code || '').toUpperCase();
+    var info = REGION_MAP[code] || [];
+    var hay = [code, item.nameZh, item.nameEn, info[0], info[1], regionZh(code), regionEn(code)]
+      .map(function(x){ return String(x || '').toLowerCase().replace(/[\s_\-]/g, ''); })
+      .join('|');
+    return hay.indexOf(q) >= 0;
+  }
+
   function renderRegionsModal(){
     if (modalEl.hidden || modalTitle.textContent !== '区域数据') return;
     var list = state.regionList || [];
+    var shown = list.filter(regionMatches);
     var head = '<div class="sortbar" style="margin-bottom:10px">' +
       '<button class="btn" type="button" id="m-import-official">导入游戏原版数据</button>' +
       '<button class="btn ghost" type="button" id="m-import">导入模组目录…</button>' +
       '<button class="btn ghost" type="button" id="m-open-dir">打开缓存目录</button>' +
+      '<button class="btn ghost" type="button" id="m-hide-dup" title="MSE 与 Downpour、The Watcher 与 Watcher 是同一份内容的两条来源，默认收起来避免重复计数">' +
+        '重复来源：' + (state.hideDupSources ? '已折叠' : '已显示') + '</button>' +
+        '<input id="m-reg-filter" class="reg-filter" type="text" autocomplete="off" ' +
+          'placeholder="搜索区域：缩写 / 英文名 / 中文名" value="' + esc(state.regionFilter || '') + '">' +
+        (regionQuery()
+          ? '<span class="reg-filter-n" id="m-reg-count">' + shown.length + ' / ' + list.length + '</span>' +
+            '<button class="btn ghost" type="button" id="m-reg-clear">清除</button>'
+          : '<span class="reg-filter-n" id="m-reg-count"></span>') +
       '</div>' +
       '<div class="cache-bar" id="m-room-cache"><span class="cb-txt">房间渲染缓存 · 统计中…</span></div>' +
       '<div class="format-note" style="margin-bottom:12px">同一区域可以有多个<b>来源</b>（原版 / Downpour / Watcher / 各模组），' +
       '每个来源独立保存、互不覆盖。点来源名可以<b>点亮或熄灭</b>它，只有点亮的来源参与完成度计算；' +
       '只有地图没有 world 文件的来源会标「仅地图」，不参与分母。</div>' +
       '<div id="m-game-hint" class="format-note" style="margin-bottom:12px"></div>';
-    var body = list.length
-      ? list.map(regionCard).join('')
-      : '<div class="map-empty">还没有导入任何区域数据。<br>先点「导入游戏原版数据」拿到所有原版/DLC 区域的完整房间清单。</div>';
-    modalBody.innerHTML = head + body;
+    var body = !list.length
+      ? '<div class="map-empty">还没有导入任何区域数据。<br>先点「导入游戏原版数据」拿到所有原版/DLC 区域的完整房间清单。</div>'
+      : (shown.length
+          ? shown.map(regionCard).join('')
+          : '<div class="map-empty">没有匹配「' + esc(state.regionFilter || '') + '」的区域。<br>' +
+            '可以试缩写（<code>CC</code>）、英文名（<code>Chimney</code>）或中文名（<code>烟囱</code>）。</div>');
+    modalBody.innerHTML = head + '<div id="m-reg-list">' + body + '</div>';
     bindRegionActions();
+    bindRegionCards(modalBody);
+    bindRegionFilter();
     showGameHint();
     rmCacheShow();
+  }
+
+  /* 搜索只重画列表，不去动头部——否则输入框会失焦 */
+  function bindRegionFilter(){
+    var inp = $('m-reg-filter');
+    if (!inp) return;
+    inp.addEventListener('input', function(){
+      state.regionFilter = inp.value;
+      var box = $('m-reg-list');
+      var list = state.regionList || [];
+      var shown = list.filter(regionMatches);
+      if (box){
+        box.innerHTML = shown.length
+          ? shown.map(regionCard).join('')
+          : '<div class="map-empty">没有匹配「' + esc(state.regionFilter || '') + '」的区域。</div>';
+        bindRegionCards(box);
+      }
+      var cnt = $('m-reg-count');
+      if (cnt) cnt.textContent = regionQuery() ? (shown.length + ' / ' + list.length) : '';
+      var clear = $('m-reg-clear');
+      if (!regionQuery() && clear) clear.parentNode.removeChild(clear);
+      if (regionQuery() && !clear){
+        var btn = document.createElement('button');
+        btn.className = 'btn ghost';
+        btn.type = 'button';
+        btn.id = 'm-reg-clear';
+        btn.textContent = '清除';
+        btn.addEventListener('click', clearRegionFilter);
+        if (cnt && cnt.parentNode) cnt.parentNode.insertBefore(btn, cnt.nextSibling);
+      }
+    });
+    inp.addEventListener('keydown', function(ev){
+      if (ev.key === 'Escape'){ inp.value = ''; state.regionFilter = ''; renderRegionsModal(); }
+    });
+    var clearBtn = $('m-reg-clear');
+    if (clearBtn) clearBtn.addEventListener('click', clearRegionFilter);
+  }
+
+  function clearRegionFilter(){
+    state.regionFilter = '';
+    renderRegionsModal();
+    var inp = $('m-reg-filter');
+    if (inp) inp.focus();
   }
 
   /* ---- 房间渲染缓存：占用统计 + 清理 ----
@@ -5261,6 +5314,20 @@ function parseSave(raw, onProgress){
     if (importBtn) importBtn.addEventListener('click', doImport);
     var officialBtn = $('m-import-official');
     if (officialBtn) officialBtn.addEventListener('click', doImportOfficial);
+    var dupBtn = $('m-hide-dup');
+    if (dupBtn) dupBtn.addEventListener('click', function(){
+      state.hideDupSources = !state.hideDupSources;
+      if (hasBridge()){
+        bridgeCall('save_config', { ui: { hideDupSources: state.hideDupSources } }).catch(function(){});
+      }
+      /* 弹窗自己的行要重绘（`recompute` 只管详情区，不会重建 modal）；
+         重绘会重新绑定事件，所以别再动旧的 dupBtn 引用 */
+      renderRegionsModal();
+      recompute();          /* 区域表里的来源 chips 跟着变 */
+      toast(state.hideDupSources
+        ? '已收起与官方来源重复的模组层（完成度不受影响）'
+        : '已显示重复来源，可在这里单独管理');
+    });
     var openBtn = $('m-open-dir');
     if (openBtn) openBtn.addEventListener('click', function(){
       bridgeCall('open_data_dir').then(function(res){
@@ -5268,7 +5335,12 @@ function parseSave(raw, onProgress){
       }).catch(function(){ toast('浏览器模式不支持'); });
     });
 
-    Array.prototype.forEach.call(modalBody.querySelectorAll('[data-del]'), function(btn){
+  }
+
+  /* 区域卡片区（可单独重绘）：搜索框只重画这一块，头部按钮不重新绑定，
+     否则每敲一个字就把「导入」这类按钮再绑一遍，点一下会触发两次。 */
+  function bindRegionCards(scope){
+    Array.prototype.forEach.call(scope.querySelectorAll('[data-del]'), function(btn){
       btn.addEventListener('click', function(){
         var code = btn.getAttribute('data-del');
         if (!window.confirm('删除区域 ' + code + ' 的导入数据？（不影响模组目录与存档）')) return;
@@ -5282,20 +5354,20 @@ function parseSave(raw, onProgress){
       });
     });
 
-    Array.prototype.forEach.call(modalBody.querySelectorAll('[data-reimport]'), function(btn){
+    Array.prototype.forEach.call(scope.querySelectorAll('[data-reimport]'), function(btn){
       btn.addEventListener('click', function(){
         importByPath(btn.getAttribute('data-path'));
       });
     });
 
-    Array.prototype.forEach.call(modalBody.querySelectorAll('[data-src]'), function(btn){
+    Array.prototype.forEach.call(scope.querySelectorAll('[data-src]'), function(btn){
       btn.addEventListener('click', function(){
         toggleSource(btn.getAttribute('data-src'));
         loadRegions().then(renderRegionsModal);
       });
     });
 
-    Array.prototype.forEach.call(modalBody.querySelectorAll('[data-rename]'), function(btn){
+    Array.prototype.forEach.call(scope.querySelectorAll('[data-rename]'), function(btn){
       btn.addEventListener('click', function(){
         askSourceName({
           title: '重命名来源',
@@ -5313,7 +5385,7 @@ function parseSave(raw, onProgress){
       });
     });
 
-    Array.prototype.forEach.call(modalBody.querySelectorAll('[data-dellayer]'), function(btn){
+    Array.prototype.forEach.call(scope.querySelectorAll('[data-dellayer]'), function(btn){
       btn.addEventListener('click', function(){
         var code = btn.getAttribute('data-code');
         var lid = btn.getAttribute('data-dellayer');
@@ -5329,7 +5401,7 @@ function parseSave(raw, onProgress){
     /* 清来源（S3）：模组数据是按区域存的，District4B 实测散在 37 个层里，
        只删一个区域的那层，地图上到处都还留着 SB_4B 这种残影。
        这里先算影响面给人看，确认后跨区域一次清干净。 */
-    Array.prototype.forEach.call(modalBody.querySelectorAll('[data-delsrc]'), function(btn){
+    Array.prototype.forEach.call(scope.querySelectorAll('[data-delsrc]'), function(btn){
       btn.addEventListener('click', function(){
         var sid = btn.getAttribute('data-delsrc');
         var nm = btn.getAttribute('data-name') || sid;
@@ -5357,7 +5429,7 @@ function parseSave(raw, onProgress){
       });
     });
 
-    Array.prototype.forEach.call(modalBody.querySelectorAll('[data-map]'), function(btn){
+    Array.prototype.forEach.call(scope.querySelectorAll('[data-map]'), function(btn){
       btn.addEventListener('click', function(){
         openMap(btn.getAttribute('data-map'), btn.getAttribute('data-layer'));
       });
@@ -5740,7 +5812,7 @@ function parseSave(raw, onProgress){
       geoIdx = {};
       mapNames = [];
       noFile = [];
-      Array.prototype.forEach.call(stage.querySelectorAll('.rm[data-room]'), function(g){
+      Array.prototype.forEach.call((svgEl || stage).querySelectorAll('.rm[data-room]'), function(g){
         var nm = g.getAttribute('data-room');
         if (nm) geoIdx[String(nm).toUpperCase()] = nm;
       });
@@ -5809,14 +5881,15 @@ function parseSave(raw, onProgress){
       '</div></details>';
 
     var html = '<div class="map-wrap" id="geo-wrap"><div class="map-main">' +
+      '<div class="map-src-bar" id="map-src-bar"></div>' +
       '<div class="map-tools">' +
         '<span class="mlabel">区域地图</span>' +
         '<button class="btn map-graph-btn" id="map-graph" type="button" ' +
           'title="把整片区域的房间画成区域拓扑图">◈ 区域拓扑</button>' +
+        /* 「导出 SVG」按钮已下线（v1.3.2 №10）：矢量仍由 PNG 那条路内部复用（geoExportSvgText），
+           只是不再单独给"另存为 .svg"的出口。 */
         '<button class="btn ghost" id="geo-pal" type="button" ' +
           'title="本区的颜色、连线、杆子、引擎">设置</button>' +
-        '<button class="btn ghost" id="geo-exp-svg" type="button" ' +
-          'title="导出这张图为矢量 SVG（整图、含本区配色与已探索框），弹出另存为让你选位置">导出 SVG</button>' +
         '<button class="btn ghost" id="geo-exp-png" type="button" ' +
           'title="导出 2× PNG（同一份 SVG 光栅化，像素封顶 24 MP），弹出另存为让你选位置">导出 PNG</button>' +
         '<span class="map-hint" id="geo-meta">正在算布局…</span>' +
@@ -5876,20 +5949,147 @@ function parseSave(raw, onProgress){
 
     /* 副标题沿用方块图时代的口径：变体 / 来源 / 剔除数 / 角色。
        几何图是整区一次布局，这些信息仍然是"这张图代表哪一套房间"的关键。 */
-    var sub = (rd.zh || rd.nameZh || '') + ' ' + (rd.en || rd.nameEn || '') +
-      ' · ' + (sets.variant ? '变体：' + sets.variant : '来源：' +
-        ((sets.layerNames || []).join(' / ') || '本层')) +
-      (sets.conditionalDropped
-        ? ' · 已剔除 ' + sets.conditionalDropped + ' 间'
-          + (sets.roleDropped ? '（角色专属 ' + sets.roleDropped + '）' : '')
-          + (sets.manualDropped ? '（手动 ' + sets.manualDropped + '）' : '')
-        : '') +
-      (slugcat ? ' · 角色：' + slugcat : '');
-    openModal('区域地图 · ' + code, sub, html, false, true);
+    function subText(){
+      var st = sets || { layerNames: [] };
+      return (rd.zh || rd.nameZh || '') + ' ' + (rd.en || rd.nameEn || '') +
+        ' · ' + (st.variant ? '变体：' + st.variant : '来源：' +
+          ((st.layerNames || []).join(' / ') || '本层')) +
+        (st.conditionalDropped
+          ? ' · 已剔除 ' + st.conditionalDropped + ' 间'
+            + (st.roleDropped ? '（角色专属 ' + st.roleDropped + '）' : '')
+            + (st.manualDropped ? '（手动 ' + st.manualDropped + '）' : '')
+          : '') +
+        (slugcat ? ' · 角色：' + slugcat : '');
+    }
+    openModal('区域地图 · ' + code, subText(), html, false, true);
 
     var wrap = $('geo-wrap'), stage = $('geo-stage'), hold = $('geo-hold');
     var metaEl = $('geo-meta'), pctEl = $('geo-pct'), listBox = $('map-list');
     paintRegmapColors(wrap, KEY);
+
+    /* ================= №7 来源开关（地图页最顶端） =================
+       与「区域数据」弹窗里那排 chips 是**同一份口径**：都是 `rd.layers` 的
+       `enabled`，点了都走 `set_source_enabled` 落盘。区别只是位置——
+       在图上切来源时不用先关地图、再开弹窗、再关弹窗。
+
+       切完要重算三样：房间集（右侧清单的分母）、SVG（几何）、副标题（来源名）。
+       其中「等价来源」那种切换（MSE 模组层 ↔ Downfall 官方层、Watcher 残缺副本）
+       房间表其实一模一样，后端会按房间表指纹直接命中布局缓存 → 几乎无感。 */
+    var srcBar = $('map-src-bar');
+    var srcBusy = false;
+
+    function srcChipsHTML(){
+      var list = (rd.layers || []).slice().sort(function(a, b){
+        return (a.order || 0) - (b.order || 0);
+      });
+      var out = [];
+      list.forEach(function(L){
+        var id = L.sourceId || L.id;
+        if (!id) return;
+        var dup = !!L.dupOf;
+        /* 与主界面一致：重复层默认收起（要管它就去「区域数据」里把开关打开） */
+        if (dup && state.hideDupSources) return;
+        var on = !!L.enabled;
+        var name = L.sourceName || L.label || id;
+        var n = L.roomCount || (L.rooms || []).length;
+        var tip = name + ' · ' + n + ' 间' +
+          (L.mapOnly ? ' · 仅地图，不参与分母' : '') +
+          (dup ? ' · 与「' + dupLabel(L.dupOf) + '」内容重复' : '') +
+          (on ? ' · 参与计算（点击熄灭）' : ' · 已熄灭（点击点亮）');
+        out.push('<button class="src-chip' + (on ? ' on' : '') +
+          ' k-' + esc(L.sourceKind || 'mod') +
+          (L.mapOnly ? ' maponly' : '') + (dup ? ' dup' : '') + '" type="button" ' +
+          'data-msrc="' + esc(id) + '" data-tip="' + esc(tip) + '">' +
+          '<span class="sc-n">' + esc(name) + '</span><b>' + n + '</b>' +
+          (L.mapOnly ? '<i>仅地图</i>' : '') + (dup ? '<i>重复</i>' : '') +
+          '</button>');
+      });
+      return out.length
+        ? '<span class="ms-label">来源</span>' + out.join('')
+        : '<span class="ms-label">来源</span><span class="ms-note">没有可用的来源</span>';
+    }
+
+    function paintSrcBar(){
+      if (!srcBar) return;
+      var note = srcBusy
+        ? '<span class="ms-note busy" id="map-src-note">正在重排…</span>'
+        : '<span class="ms-note" id="map-src-note">亮 = 参与计算 · 点一下就地切换</span>';
+      srcBar.innerHTML = srcChipsHTML() + note;
+      Array.prototype.forEach.call(srcBar.querySelectorAll('[data-msrc]'), function(btn){
+        btn.addEventListener('click', function(){
+          var id = btn.getAttribute('data-msrc');
+          switchMapSource(id);
+        });
+      });
+    }
+
+    /* 重算房间集：`toggleSource` 已经把 `rd.layers[*].enabled` 就地改过了 */
+    function rebuildSets(){
+      var next = regionRoomSets(rd, slugcat);
+      if (next && next.total){
+        sets = next;
+        allNames = Object.keys(sets.names).sort();
+      }
+      return next;
+    }
+
+    /* 拉一份当前口径的 SVG。返回 Promise<boolean>，失败不抛（地图页只 toast）。 */
+    function fetchSvg(keepView){
+      var cv = curveOf();
+      return bridgeCall('regmap_svg', code, slugcat || '', engOpts(code), 2400, false,
+                        hi.loaded ? 4 : 2,
+                        { mode: cv.mode, k: cv.k, min: cv.min, max: cv.max },
+                        cv.inner, cv.width ? cv.width : null, cv.bar, annoOf())
+        .then(function(r){
+          if (!r || !r.ok || !document.getElementById('geo-stage')) return false;
+          bgLearn(r); bgPaint();
+          if (!loadSvg(r, keepView)) return false;
+          syncList();
+          setMeta(' · ' + r.links + ' 边 · ' + (r.bytes / 1024).toFixed(0) + ' KB');
+          return true;
+        }, function(){ return false; });
+    }
+
+    function switchMapSource(id){
+      if (srcBusy) return;
+      var next = !sourceOn(id);
+      srcBusy = true;
+      paintSrcBar();                 /* chips 立即翻面，别等后端 */
+      if (metaEl) metaEl.textContent = '正在按新来源重排…';
+
+      /* 先把开关落盘：`regmap_svg` 是后端读配置算筛选的，
+         不 await 就会出现"图还是旧口径"的竞态。 */
+      toggleSource(id, next).then(function(){
+        /* 一个来源都不剩就没有分母了：把这下点回去，别让界面停在空状态 */
+        if (!regionRoomSets(rd, slugcat)){
+          toast('至少要留一个来源，否则这区没有房间清单');
+          return toggleSource(id, !next).then(function(){
+            srcBusy = false;
+            paintSrcBar();
+            if (modalSub) modalSub.textContent = subText();
+            if (metaEl) setMeta('');
+          });
+        }
+        hi.loaded = false;           /* 房间集变了，之前的高清层作废 */
+        rebuildSets();
+        paintSrcBar();
+        if (modalSub) modalSub.textContent = subText();
+        return fetchSvg(true).then(function(ok){
+          srcBusy = false;
+          paintSrcBar();
+          if (!ok){
+            if (metaEl) metaEl.textContent = '重排失败';
+            toast('这个来源组合算不出图，已保留上一版');
+          }
+        });
+      }).catch(function(){
+        srcBusy = false;
+        paintSrcBar();
+      });
+    }
+
+
+    paintSrcBar();
 
     var gbtn = $('map-graph');
     if (gbtn) gbtn.addEventListener('click', function(){ openGraph(code); });
@@ -6114,7 +6314,9 @@ function parseSave(raw, onProgress){
     var gaBoxes = Array.prototype.slice.call(pop.querySelectorAll('[data-ga]') || []);
     function gaPaint(){
       var a = annoOf();
-      gaBoxes.forEach(function(box){ box.checked = !!a[box.getAttribute('data-ga')]; });
+      gaBoxes.forEach(function(box){
+        box.checked = !!a[box.getAttribute('data-ga')];
+      });
     }
     gaBoxes.forEach(function(box){
       box.addEventListener('change', function(){
@@ -6207,7 +6409,8 @@ function parseSave(raw, onProgress){
 
     function markDim(){
       var nSeen = 0, nAll = 0, nGate = 0;
-      Array.prototype.forEach.call(stage.querySelectorAll('.rm'), function(g){
+      /* 双缓冲期间新旧两版 SVG 同时在 DOM 里，只数当前这版，否则分母会翻倍 */
+      Array.prototype.forEach.call((svgEl || stage).querySelectorAll('.rm'), function(g){
         var nm = g.getAttribute('data-room') || '';
         var seen = roomSeen(code, nm, !!visited[String(nm).toUpperCase()]);
         /* 门节点照样上色/上框，但**不进「N 间」**：那是个完成度分母，门不在存档的
@@ -6230,18 +6433,46 @@ function parseSave(raw, onProgress){
     }
 
     function loadSvg(r, keepView){
-      var old = stage.querySelector('svg');
-      if (old) old.parentNode.removeChild(old);
+      var olds = Array.prototype.slice.call(stage.querySelectorAll('svg.geo-svg'));
       stage.insertAdjacentHTML('beforeend', r.svg);
-      svgEl = stage.querySelector('svg');
-      if (!svgEl) return false;
-      svgEl.classList.add('geo-svg');
+      var all = stage.querySelectorAll('svg');
+      var svg = all[all.length - 1];
+      if (!svg) return false;
+      svg.classList.add('geo-svg', 'entering');
+      svgEl = svg;
       W = r.w; H = r.h;
       if (keepView) applyVB(); else fitVB();
       /* 新插入的 SVG 一律按当前「背景取色」刷一遍（打开 / 改曲率 / 换高清层都走这里）。
          后端其实也会按 `opts.bg` 出好色，这里再刷一次是为了**拖动取色器过程中的
          DOM 覆盖**不会在换层时被吞掉，代价只有几十次 style 写入。 */
       applyBgDom();
+
+      /* №7 双缓冲：新图淡入、旧图淡出后再摘。
+         为什么不直接换——切来源时后端可能要重排 0.6–2.6 s，这段时间要是先把旧图
+         摘了，屏幕上就是一块空舞台（闪白）。留着旧图，换的那一下只有 160 ms 的
+         交叉淡入，视觉上是"图变了"而不是"图没了又来一张"。 */
+      if (!olds.length){
+        svg.classList.remove('entering');
+        return true;
+      }
+      var reduceMotion = window.matchMedia &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduceMotion){
+        olds.forEach(function(o){ if (o.parentNode) o.parentNode.removeChild(o); });
+        svg.classList.remove('entering');
+        return true;
+      }
+      olds.forEach(function(o){
+        o.classList.add('leaving');
+        o.classList.remove('entering');
+      });
+      /* 用定时器而不是 requestAnimationFrame：隐藏窗口 / 后台标签页里 rAF 会被
+         节流甚至暂停，那样旧图就永远摘不掉（舞台上会一直叠着两版）。
+         16 ms 足够让 `.entering`（opacity:0）先上屏一帧，transition 才会走。 */
+      setTimeout(function(){ svg.classList.remove('entering'); }, 16);
+      setTimeout(function(){
+        olds.forEach(function(o){ if (o.parentNode) o.parentNode.removeChild(o); });
+      }, 220);
       return true;
     }
 
@@ -6397,21 +6628,6 @@ function parseSave(raw, onProgress){
       var zh = String(rd.zh || rd.nameZh || '').trim();
       return KEY + (zh ? '_' + zh.replace(/[\\/:*?"<>|\s]/g, '') : '') + '_map';
     }
-    function geoExportSvg(){
-      var text = geoExportSvgText(false);
-      if (!text){ toast('图还没画完，稍等一下再导'); return; }
-      var btn = $('geo-exp-svg');
-      if (btn) btn.disabled = true;
-      exportBytes(geoExportBase() + '.svg', text, 'svg').then(function(res){
-        if (res && res.ok){
-          exportTipShow(res, '已导出 SVG 地图', '矢量');
-        } else {
-          exportFailed(res);
-        }
-      }, function(err){
-        exportFailed(null, err);
-      }).then(function(){ if (btn) btn.disabled = false; });
-    }
     /* PNG：同一份 SVG → <img> → canvas。
        `scale` 默认 2×；像素总数封顶 24 MP —— 大区域 2× 也够（GW 2400×1905 → 4800×3810），
        真遇到极长的区域自动降到能放下的倍率，不至于把内存打爆。 */
@@ -6478,8 +6694,6 @@ function parseSave(raw, onProgress){
       };
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(text);
     }
-    var svgExp = $('geo-exp-svg');
-    if (svgExp) svgExp.addEventListener('click', geoExportSvg);
     var pngExp = $('geo-exp-png');
     if (pngExp) pngExp.addEventListener('click', function(){
       pngExp.disabled = true;
@@ -6673,8 +6887,7 @@ function parseSave(raw, onProgress){
     return Object.keys(o).length ? o : null;
   }
   /* 标注（W4 / №2）：与 `core/regmap/svg.py:ANNO_DEFAULTS` 一一对应，**全局一套**。
-     只剩两项：`sub` 子区域色、`labels` 子区域名。房间图标 / 物件 / 业力门三类已删
-     （连渲染代码一起），所以这里既没有开关、也没有对应字段。 */
+     只剩 `sub` 子区域色、`labels` 子区域名两项（房间图标 / 业力门 / 物件点位已删）。 */
   var ANNO_DEF = { sub: 1, labels: 1 };
   function annoOf(){
     var a = state.regmapAnno || {}, out = {};
@@ -7187,7 +7400,7 @@ function parseSave(raw, onProgress){
     var orders = [['geo', '就近'], ['name', '房间号'], ['deg', '度数优先']].map(function(x){
       return '<option value="' + x[0] + '"' + (o.order === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
     }).join('');
-    var starts = [['gate', '业力门'], ['shelter', '庇护所'], ['den', '存档冬眠点'], ['custom', '选中节点']].map(function(x){
+    var starts = [['gate', '业力门'], ['shelter', '庇护所'], ['den', '存档雨眠点'], ['custom', '选中节点']].map(function(x){
       return '<option value="' + x[0] + '"' + (o.start === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
     }).join('');
 
@@ -10356,6 +10569,7 @@ function parseSave(raw, onProgress){
         if (cfg.ui.regmapBgOverride && typeof cfg.ui.regmapBgOverride === 'object') state.regmapBgOverride = cfg.ui.regmapBgOverride;
         if (cfg.ui.roomExcluded && typeof cfg.ui.roomExcluded === 'object') state.roomExcluded = cfg.ui.roomExcluded;
         if (typeof cfg.ui.roomStrict === 'boolean') state.roomStrict = cfg.ui.roomStrict;
+        if (typeof cfg.ui.hideDupSources === 'boolean') state.hideDupSources = cfg.ui.hideDupSources;
         if (typeof cfg.ui.roomCardFull === 'boolean') state.roomCardFull = cfg.ui.roomCardFull;
         if (cfg.ui.roomCardMarks && typeof cfg.ui.roomCardMarks === 'object'){
           state.roomCardMarks = cfg.ui.roomCardMarks;
@@ -10464,6 +10678,19 @@ function parseSave(raw, onProgress){
       return s;
     },
     tabKeys: function(){ return TABS.map(function(t){ return t[0]; }); },
+    /* №7 回归用：直接开某个区域的地图，不依赖「区域表里那个按钮」的版式 */
+    map: function(code){ openMap(String(code || '').toUpperCase()); },
+    /* 译名回归用（v1.3.2）：原来靠「已发现庇护所」的 chips 挑"没内置译名的区"，
+       那段已随 №3 下线，所以直接问页面要，别让测试依赖某个 UI 区块。 */
+    regionLabelOf: function(code){ return regionLabel(code); },
+    modRegionCode: function(){
+      var list = state.regionList || [];
+      for (var i = 0; i < list.length; i++){
+        var c = String(list[i].code || '');
+        if (c && !BASE_ZH.regions[c]) return c;   /* 有数据、但内置对照表里没有 */
+      }
+      return '';
+    },
     sliceCount: function(){ return lastSlices.length; },
     overview: function(){ return lastOverview; },
     pick: function(){ return state.regionPick || {}; },

@@ -121,6 +121,9 @@ DEFAULT_UI = {
     "roomMarks": {},
     # 手动"这个角色到不了"的房间：{角色: {区域: [房间名]}}，直接不进完成度分母
     "roomExcluded": {},
+    # №8 折叠：True = 隐藏「与官方层重复」的模组来源（默认），False = 显示出来（灰+重复徽标）。
+    # 必须在这里登记，否则 save_config 的白名单会把前端传来的值裁掉，重启即回默认。
+    "hideDupSources": True,
     # 完成度口径：True = 只算当前角色可达的房间（严格），False = 全部房间（宽松）。
     # 必须在这里登记，否则 save_config 的白名单会把前端传来的值裁掉，重启即失效。
     "roomStrict": True,

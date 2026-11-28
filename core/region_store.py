@@ -267,6 +267,9 @@ def _decorate(region: dict, ov: dict | None = None) -> dict:
             or sources.default_name(layer_id, layer.get("kind"))
         )
         layer["enabled"] = bool(entry.get("enabled", True))
+        # №8 折叠：`dupOf` 非空 = 这一层与某个官方层内容重复（被默认熄灭）
+        layer["dupOf"] = entry.get("dupOf")
+        layer["aka"] = sources.aka_of(layer_id)
         # 层级「仅地图」：有地图但没有 world 文件，房间清单不完整
         layer["mapOnly"] = not bool(stats.get("hasWorldFile"))
         # 该层带的地图变体（圣徒 / 矛大师 / 工匠……）：只存矩形与底图路径
@@ -308,6 +311,8 @@ def _decorate(region: dict, ov: dict | None = None) -> dict:
             "gates": l.get("gates"),
             "hasMap": l.get("hasMap"),
             "mapOnly": l.get("mapOnly"),
+            "dupOf": l.get("dupOf"),
+            "aka": l.get("aka"),
             "mapWidth": (l.get("map") or {}).get("width"),
             "mapHeight": (l.get("map") or {}).get("height"),
             "upToDate": l.get("upToDate"),
@@ -399,6 +404,7 @@ def would_shrink(region: dict, threshold: float = 0.7) -> dict | None:
 
 def save_region(region: dict, force: bool = False) -> dict:
     """写入一个层。region 里必须带 layer={id,kind,label,order}。"""
+    sources.invalidate_duplicates()      # 层变了，№8 的等价层判定要重算
     code = str(region.get("code", "")).upper()
     if not code:
         return {"ok": False, "error": "区域代码为空"}
@@ -485,6 +491,7 @@ def save_regions(regions: list[dict], force: bool = False) -> dict:
 
 
 def delete_region(code: str) -> dict:
+    sources.invalidate_duplicates()
     path = _region_path(code)
     try:
         if os.path.isfile(path):
@@ -498,6 +505,7 @@ def delete_region(code: str) -> dict:
 
 def delete_layer(code: str, layer_id: str) -> dict:
     """只删某一层；删空了就删文件。"""
+    sources.invalidate_duplicates()
     code = code.upper()
     data = _read_json(_region_path(code))
     if not isinstance(data, dict):
@@ -579,6 +587,7 @@ def _plan_source_delete(source_id: str) -> dict:
 
 
 def preview_source_delete(source_id: str) -> dict:
+    sources.invalidate_duplicates()
     plan = _plan_source_delete(source_id)
     if not plan["layerCount"]:
         return {"ok": False, "error": "没有找到这个来源的数据", **plan}
@@ -713,6 +722,12 @@ def summary() -> list[dict]:
                     "sourceKind": layer.get("sourceKind") or layer.get("kind"),
                     "enabled": bool(layer.get("enabled", True)),
                     "mapOnly": bool(layer.get("mapOnly")),
+                    # №8：区域数据弹窗要显示「重复·已折叠」徽标
+                    "dupOf": layer.get("dupOf"),
+                    "aka": layer.get("aka"),
+                    # №8：区域数据弹窗要显示「重复·已折叠」徽标
+                    "dupOf": layer.get("dupOf"),
+                    "aka": layer.get("aka"),
                     "rooms": layer.get("roomCount"),
                     "shelters": layer.get("shelters"),
                     "gates": layer.get("gates"),

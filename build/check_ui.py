@@ -126,8 +126,8 @@ def main() -> int:
                 "modalClosed: document.getElementById('modal').hidden})"
             ))
 
-            # 3) 各战役统计合计
-            js("var tb=document.querySelector('[data-tab=\"global\"]'); if(tb) tb.click();")
+            # 3) 各战役统计合计（v1.3.2：收集页已下线，标签改名「统计」，只剩这张表）
+            js("var tb=document.querySelector('[data-tab=\"stats\"]'); if(tb) tb.click();")
             time.sleep(1.2)
             out["total"] = loads(js(
                 "JSON.stringify((function(){"
@@ -158,7 +158,7 @@ def main() -> int:
             time.sleep(1.2)
             js("document.getElementById('modal-close').click();")
             time.sleep(0.4)
-            js("var tb=document.querySelector('[data-tab=\"kills\"]'); if(tb) tb.click();")
+            js("var tb=document.querySelector('[data-tab=\"other\"]'); if(tb) tb.click();")
             time.sleep(1.2)
             out["trApplied"] = loads(js(
                 "JSON.stringify({killsPageHasNew: /测试蜈蚣/.test(document.getElementById('detail-body').textContent),"
@@ -189,7 +189,7 @@ def main() -> int:
             time.sleep(1.2)
             js("document.getElementById('modal-close').click();")
             time.sleep(0.4)
-            js("var tb=document.querySelector('[data-tab=\"kills\"]'); if(tb) tb.click();")
+            js("var tb=document.querySelector('[data-tab=\"other\"]'); if(tb) tb.click();")
             time.sleep(1.0)
             out["trReset"] = loads(js(
                 "JSON.stringify({backToOld: /幼年蜈蚣/.test(document.getElementById('detail-body').textContent),"

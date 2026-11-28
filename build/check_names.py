@@ -99,44 +99,35 @@ def main() -> int:
                     break
             time.sleep(1.0)
 
-            # 选中一个角色 → 全局解锁页
+            # 选中一个角色 → 统计页
+            # v1.3.2：收集页已整页下线（代币 / 珍珠 / 回响 / 广播全删），只剩「各战役统计」。
+            # 这一组改为看表里的角色名是否带中文译名 —— 同样走 `slugZh()` 那条链。
             js("[].slice.call(document.querySelectorAll('#camplist .camp')).filter("
                "function(e){return /White/.test(e.textContent);})[0].click();")
             time.sleep(0.6)
-            js("var t=document.querySelector('[data-tab=\"global\"]'); if(t) t.click();")
-            time.sleep(1.2)
+            js("var t=document.querySelector('[data-tab=\"stats\"]'); if(t) t.click();")
+            time.sleep(1.0)
 
-            chips = loads(js(
-                "JSON.stringify([].slice.call(document.querySelectorAll('#detail-body .chips .chip'))"
-                ".map(function(c){return {text:c.textContent.replace(/\\s+/g,' ').trim().replace(/\\s+\\d+$/,''),"
-                "code:c.getAttribute('data-code')||'', tip:c.getAttribute('data-tip')||'',"
-                " unrec:c.classList.contains('unrec')};}))"
+            rows = loads(js(
+                "JSON.stringify([].slice.call(document.querySelectorAll('#detail-body tbody tr'))"
+                ".map(function(tr){var c0=tr.cells[0];"
+                "var sp=c0?c0.querySelector('span'):null;"
+                "return {name:c0?c0.textContent.replace(/\\s+/g,' ').trim():'',"
+                "zh:sp?sp.textContent.trim():''};}))"
             )) or []
-            out["chips"] = chips
-            named = [c for c in chips if "区域原名" in (c.get("tip") or "")]
-            unknown = [c for c in chips if (c.get("tip") or "").startswith("缩写 ")]
-            bare_ok = all(c.get("unrec") for c in unknown) and all(
-                (c.get("text") or "").strip() == (c.get("code") or "") for c in unknown)
-            body_note = js(
-                "(function(){var b=document.getElementById('detail-body');"
-                "return b? b.textContent.indexOf('琥珀色') : -1;})()"
-            )
+            out["statsRows"] = rows
 
-            check("全局解锁页有庇护所区域chip", len(chips) > 0, f"{len(chips)} 个")
-            check("每个chip都带来源提示", all(c.get("tip") for c in chips),
-                  str([c.get("text") for c in chips if not c.get("tip")][:3]))
-            check("不在对照表的区域显示「原名 + 缩写」", len(named) > 0,
-                  f"{len(named)} 个：{[c.get('text') for c in named][:4]}")
-            check("只有真的查不到名字时才只剩代码（且标琥珀色）", bare_ok,
-                  str([c.get("code") for c in unknown][:6]))
-            check("「琥珀色 = …保留原始代码」那段说明已去掉", body_note == -1,
-                  f"index={body_note}")
+            check("统计页有战役行", len(rows) > 0, f"{len(rows)} 行")
+            check("战役名带中文译名", any(r.get("zh") for r in rows),
+                  str([r.get("name") for r in rows][:4]))
+            check("「琥珀色 = …保留原始代码」那段说明已随庇护所 chips 下线",
+                  js("(function(){var b=document.getElementById('detail-body');"
+                     "return b? b.textContent.indexOf('琥珀色') : -1;})()") == -1, "")
 
-            # 用「连名字都没有」的那个区域做译名测试：这正是用户遇到的 Z1 那类
-            target = unknown[0] if unknown else (named[0] if named else None)
-            code = (target or {}).get("code") or ""
-            out["target"] = {"code": code, "text": (target or {}).get("text"),
-                             "tip": (target or {}).get("tip")}
+            # 用「有数据、但内置对照表里没有」的区域做译名测试：正是用户遇到的 Z1 那类。
+            # v1.3.2：不再从庇护所 chips 里挑（那段已下线），直接问页面要一个这样的代码。
+            code = js("window.__rwTest.modRegionCode()") or ""
+            out["target"] = {"code": code}
             check("找到一个可测的模组区域", bool(code), str(out["target"]))
 
             before_n = region_count(read_tr())
@@ -162,7 +153,7 @@ def main() -> int:
             out["row"] = row
             check("模组区域能在译名列表里搜到", row.get("found"), f"code={code} {row}")
             # 再搜一个「导入过数据、但没内置译名」的区域，确认那一行带原名
-            named_code = (named[0].get("code") if named else "")
+            named_code = code   # 同一个区：它的 rows 里应该带区域原名（displayName）
             out["namedRow"] = {}
             if named_code:
                 js("(function(){var s=document.getElementById('tr-search');"
@@ -194,18 +185,13 @@ def main() -> int:
             check("搜索过滤下保存不会丢掉其它译名", out["trAfter"] >= before_n + 1,
                   f"保存前 {before_n} 条 → 保存后 {out['trAfter']} 条")
 
-            # 关弹窗看全局解锁页是否立刻用新名字
+            # 关弹窗，确认改名立刻生效（问页面要这个区域当前的显示名；
+            # v1.3.2 起不再依赖已下线的庇护所 chips）
             js("var b=document.getElementById('modal-close'); if(b) b.click();")
             time.sleep(1.0)
-            js("var t=document.querySelector('[data-tab=\"global\"]'); if(t) t.click();")
-            time.sleep(1.0)
-            refreshed = loads(js(
-                "JSON.stringify([].slice.call(document.querySelectorAll('#detail-body .chips .chip'))"
-                ".map(function(c){return c.textContent.replace(/\\s+/g,' ').trim();}))"
-            )) or []
-            out["chipsAfter"] = refreshed
-            check("全局解锁页立刻显示新中文名",
-                  any(TEST_NAME in t for t in refreshed), str(refreshed[:3]))
+            label_after = js("window.__rwTest.regionLabelOf('%s')" % code) or ""
+            out["labelAfter"] = label_after
+            check("改名后该区域立刻显示新中文名", TEST_NAME in label_after, str(label_after))
 
             # ---------------- 批量翻译（11-06：取代了「恢复本类默认」） ----------------
             js("document.getElementById('btn-translations').click();")
@@ -241,15 +227,16 @@ def main() -> int:
                 return note
 
             # 注释 / 空行 / 空中文都要跳过；代码与英文名混写都要命中；跨分类要生效
+            # v1.3.2：「通行证」分类随 №4 下线，这里换成「角色」——仍然要跨分类命中
             table = ("//注释行\n#另一种注释\n\nRF|珊瑚洞窟Z\nBig Eel|大鳗Z\n"
-                     "Survivor|生还者Z\nNoSuchRegion|随便\nBlank|   \n")
+                     "Gourmand|美食家Z\nNoSuchRegion|随便\nBlank|   \n")
             out["bulkNote"] = set_bulk(table, "命中 3 条")
-            check("批量解析：命中 3（区域/生物/通行证各一）· 未匹配 1 · 跳过 1",
+            check("批量解析：命中 3（区域/生物/角色各一）· 未匹配 1 · 跳过 1",
                   "命中 3 条" in (out["bulkNote"] or "")
                   and "未匹配 1" in (out["bulkNote"] or "")
                   and "跳过 1" in (out["bulkNote"] or ""), str(out["bulkNote"]))
-            check("跨分类命中体现在统计里（区域/生物/通行证）",
-                  all(k in (out["bulkNote"] or "") for k in ("区域 1", "生物 1", "通行证 1")),
+            check("跨分类命中体现在统计里（区域/生物/角色）",
+                  all(k in (out["bulkNote"] or "") for k in ("区域 1", "生物 1", "角色 1")),
                   str(out["bulkNote"]))
 
             # 与内置译名完全相同的表 → 一条都不该写
@@ -288,11 +275,11 @@ def main() -> int:
             out["bulkWritten"] = {
                 "regions": "珊瑚洞窟Z" in raw,
                 "creatures": "大鳗Z" in raw,
-                "passages": "生还者Z" in raw,
+                "slugcats": "美食家Z" in raw,
                 "backToList": js("!!document.getElementById('tr-save')"),
             }
-            check("确认后一次写入多个分类（区域/生物/通行证），并回到列表",
-                  all(out["bulkWritten"][k] for k in ("regions", "creatures", "passages"))
+            check("确认后一次写入多个分类（区域/生物/角色），并回到列表",
+                  all(out["bulkWritten"][k] for k in ("regions", "creatures", "slugcats"))
                   and out["bulkWritten"]["backToList"] is True, str(out["bulkWritten"]))
         except Exception as exc:  # noqa: BLE001
             out["errors"].append(f"worker: {exc}")

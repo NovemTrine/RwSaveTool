@@ -490,7 +490,12 @@ def main() -> int:
             # ---- 缩放 / 平移：改 viewBox，不改 transform ----
             out["zoom"] = loads(js(
                 "JSON.stringify((function(){"
-                "var st=document.getElementById('geo-stage'), svg=st.querySelector('svg');"
+                "var st=document.getElementById('geo-stage');"
+                # 双缓冲期间旧图还留在 DOM 里（`.leaving`），要读**当前这版**；
+                # 读 `querySelector('svg')` 会拿到上一版，viewBox 永远不变。
+                "var svg=[].slice.call(st.querySelectorAll('svg')).filter(function(s){"
+                "return (s.getAttribute('class')||'').indexOf('leaving')<0;}).pop()"
+                "||st.querySelector('svg');"
                 "document.querySelector('#geo-zoom [data-gz=\"fit\"]').click();"
                 "var vb0=svg.getAttribute('viewBox'); var tf0=svg.style.transform||'';"
                 "document.querySelector('#geo-zoom [data-gz=\"in\"]').click();"

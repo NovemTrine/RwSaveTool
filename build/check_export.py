@@ -167,12 +167,13 @@ def main() -> int:
                 "return {ok:!!svg, rooms:st.querySelectorAll('.rm[data-room]').length,"
                 "seen:st.querySelectorAll('.rm.seen').length,"
                 "w:+svg.getAttribute('data-w'), h:+svg.getAttribute('data-h'),"
-                "buttons:[!!document.getElementById('geo-exp-svg'),"
-                "!!document.getElementById('geo-exp-png')]};})())"
+                "buttons:[!!document.getElementById('geo-exp-png'),"
+                "!!document.getElementById('geo-exp-svg')]};})())"
             )) or {}
             lv = out["live"]
-            check("地图页有「导出 SVG / 导出 PNG」两个按钮",
-                  lv.get("buttons") == [True, True], str(lv.get("buttons")))
+            # v1.3.2 №10：「导出 SVG」按钮已下线，只留 PNG（矢量仍由 __rwTest.exportSvg 取用）
+            check("地图页只剩「导出 PNG」按钮，「导出 SVG」已下线",
+                  lv.get("buttons") == [True, False], str(lv.get("buttons")))
             check("几何图已经画出来（导出才有东西可导）",
                   lv.get("ok") and (lv.get("rooms") or 0) > 0, str(lv)[:120])
 
